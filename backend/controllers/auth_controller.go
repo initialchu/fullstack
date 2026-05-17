@@ -59,3 +59,44 @@ func Register(ctx *gin.Context) {
 		"token": token,
 	})
 }
+func Login(ctx *gin.Context) {
+	var input struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := ctx.ShouldBindJSON(&input); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+	var user models.User
+	//调用where方法根据用户名查询数据库中的用户记录，如果查询失败，返回401错误和错误信息
+	//人话：在数据库中查找用户名，如果没有找到，说明用户名或密码无效
+	if err := global.Db.Where("username = ?", input.Username).First(&user).Error; err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"error": "无效的用户名或密码",
+		})
+		return
+	}
+	//调用utils包中的CheckPassword函数比较用户输入的密码和数据库中存储的哈希密码，如果比较失败，返回401错误和错误信息
+	//人话：如果输入的密码和数据库中的哈希密码不匹配，说明用户名或密码无效
+	if !utils.CheckPassword(input.Password, user.Password) {
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"error": "无效的用户名或密码",
+		})
+		return
+	}
+	//调用utils包中的GenerateJWT函数生成一个JWT令牌，如果生成失败，返回500错误和错误信息
+	//人话：生成一个JWT令牌，包含用户名和过期时间等信息，用于后续的身份验证
+	token, err := utils.GenerateJWT(user.Username)
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": "Failed to generate token" + err.Error(),
+		})
+		return
+	}
+	ctx.JSON(200, gin.H{
+		"token": token,
+	})
+}

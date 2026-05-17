@@ -279,3 +279,93 @@ if err := global.Db.AutoMigrate(&user); err != nil {
 **错误处理：** 如果建表/同步失败（如数据库断连），返回 500 并终止后续写入操作。
 
 > 注意：生产环境建议用正式的迁移工具（如 golang-migrate），而不是在业务代码里跑 AutoMigrate。
+
+---
+
+# `ctx.ShouldBindJSON` 解释
+
+```go
+var input struct {
+    Username string `json:"username"`
+    Password string `json:"password"`
+}
+if err := ctx.ShouldBindJSON(&input); err != nil {
+    ctx.JSON(http.StatusBadRequest, gin.H{
+        "error": err.Error(),
+    })
+    return
+}
+```
+
+**`ShouldBindJSON(&input)`** 做了三件事：
+
+1. **读取请求体** — 从 HTTP 请求中读取 JSON 原始数据
+2. **反序列化** — 把 JSON 解析并映射到结构体字段，映射依据是 `json` tag：
+   ```json
+   {"username": "alice", "password": "123456"}
+   ```
+   执行后 `input = {Username: "alice", Password: "123456"}`
+3. **校验** — 如果字段类型不匹配（比如 `username` 传了数字），返回 error
+
+**为什么要传 `&input`（指针）？** 函数需要**修改** `input` 的值（把解析结果填进去），值传递无法修改原变量。
+
+**失败时：** 返回 400（Bad Request），表示客户端发的数据有问题。
+
+> Gin 命名惯例：`ShouldBindJSON` 失败后返回 error 让你自己处理；`BindJSON` 失败会自动返回 400。`Should` 开头表示"我来判断要不要报错"。
+
+---
+
+# GORM 链式查询：根据用户名查用户
+
+```go
+if err := global.Db.Where("username = ?", input.Username).First(&user).Error; err != nil {
+    ctx.JSON(http.StatusUnauthorized, gin.H{
+        "error": "无效的用户名或密码",
+    })
+    return
+}
+```
+
+**逐步拆解：**
+
+**`Where("username = ?", input.Username)`** — 添加查询条件：
+- `?` 是占位符，GORM 用 `input.Username` 的值填充
+- 生成 SQL：`SELECT * FROM users WHERE username = 'alice'`
+- 用 `?` 而非字符串拼接，**防止 SQL 注入**
+
+**`.First(&user)`** — 执行查询，取第一条匹配记录：
+- 把查询结果**写入** `&user`（传指针改写原变量）
+- 找到 → `user` 包含该用户所有字段（ID、Password 等）
+- 没找到 → 返回 `gorm.ErrRecordNotFound`
+
+**`.Error`** — 获取执行过程中的错误（找不到用户或数据库异常都为非 nil）
+
+**为什么错误提示不区分"用户不存在"和"密码错误"？**
+
+出于**安全考虑**。如果分开返回，攻击者可以批量尝试用户名枚举出已注册账号。模糊提示让其无法判断到底是用户名不存在还是密码不对，增加攻击难度。
+
+---
+
+# 为什么登录和注册都生成 JWT？
+
+```go
+// 注册接口最后
+token, err := utils.GenerateJWT(user.Username)
+// ...
+ctx.JSON(200, gin.H{"token": token})
+
+// 登录接口最后
+token, err := utils.GenerateJWT(user.Username)
+// ...
+ctx.JSON(200, gin.H{"token": token})
+```
+
+**注册时返回 token = 注册即自动登录**
+
+注册成功后如果还要跳回登录页重新输入账号密码，体验很差。直接下发 token，客户端拿到后等同于已登录，无缝进入应用。
+
+**登录时返回 token = 正常的身份验证凭证**
+
+验证用户名密码通过后，发 token 作为后续请求的身份凭证（后续请求带 token，服务端就知道是谁在操作）。
+
+**本质上**：注册 = 创建用户 + 登录，两步合二为一，所以接口行为一致，都返回 token。
