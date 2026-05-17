@@ -113,3 +113,59 @@ app:
 ```
 
 > YAML 语法规则：`key: value` 的冒号后面必须跟一个空格，否则 `key:value` 会被整体视为一个字符串而不是一个映射项。
+
+---
+
+# `r.Run()` 报错：missing port in address
+
+**错误信息：**
+```
+[GIN-debug] [ERROR] listen tcp: address 3000: missing port in address
+```
+
+**原因：** `r.Run()` 要求的参数格式是 `:端口号`（如 `:3000`），但传的是不带冒号的 `"3000"`：
+
+```go
+// ❌ 错误
+r.Run(config.AppConfig.App.Port)  // "3000"
+
+// ✅ 正确
+r.Run(":" + config.AppConfig.App.Port)  // ":3000"
+```
+
+---
+
+# Gin 路由分组解释
+
+```go
+r := gin.Default()
+auth := r.Group("/api/auth")
+{
+    auth.POST("/login", func(ctx *gin.Context) {
+        ctx.AbortWithStatusJSON(http.StatusOK, gin.H{
+            "message": "Login successful",
+        })
+    })
+    auth.POST("/register", func(ctx *gin.Context) {
+        ctx.AbortWithStatusJSON(http.StatusOK, gin.H{
+            "message": "Register successful",
+        })
+    })
+}
+return r
+```
+
+- **`gin.Default()`** — 创建 Gin 引擎，内置 Logger（请求日志）和 Recovery（panic 恢复）中间件
+- **`r.Group("/api/auth")`** — 创建路由组，组内所有路由自动带 `/api/auth` 前缀，方便统一管理或加中间件
+- **`{ ... }`** — 大括号只是视觉分组，无语法作用，纯粹提高可读性
+- **`auth.POST("/login", ...)`** — 注册 POST 路由，完整路径为 `/api/auth/login`
+- **`ctx.AbortWithStatusJSON(http.StatusOK, gin.H{...})`** — 两个效果：
+  - `Abort` — 阻止后续中间件/处理器执行
+  - `WithStatusJSON` — 返回 JSON 并设置 HTTP 状态码（这里 200）
+- **`return r`** — 把配置好的路由引擎返回给调用方
+
+**生成的路由表：**
+```
+POST  /api/auth/login     →  {"message": "Login successful"}
+POST  /api/auth/register  →  {"message": "Register successful"}
+```
