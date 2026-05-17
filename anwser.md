@@ -253,3 +253,29 @@ s2 := string(b2)   // []byte → string → "hello"
 ```
 
 **Bcrypt 中为什么需要？** `bcrypt.GenerateFromPassword` 和 `bcrypt.CompareHashAndPassword` 的参数类型是 `[]byte`，不是 `string`，所以必须转换。这是该库的设计选择，因为密码这种敏感数据用 `[]byte` 可以在用完后手动清零，而 `string` 是不可变的，会一直留在内存中直到 GC 回收。
+
+---
+
+# GORM AutoMigrate 解释
+
+```go
+if err := global.Db.AutoMigrate(&user); err != nil {
+    ctx.JSON(http.StatusInternalServerError, gin.H{
+        "error": "Failed to migrate database",
+    })
+    return
+}
+```
+
+**`AutoMigrate`** 是 GORM 的自动迁移功能，根据 Go 结构体同步数据库表结构。
+
+**具体行为：**
+1. 检查 `users` 表是否存在，不存在就自动创建（字段根据 `User` 结构体生成）
+2. 表已存在时，检测结构体是否有**新增字段**，有则在表中添加对应列
+3. **不会删除**已有列、**不会修改**已有列类型——只新增，不破坏
+
+**为什么放在这里？** 在注册逻辑中调用，确保第一次注册时表一定存在。开发阶段省去手动建表 SQL。
+
+**错误处理：** 如果建表/同步失败（如数据库断连），返回 500 并终止后续写入操作。
+
+> 注意：生产环境建议用正式的迁移工具（如 golang-migrate），而不是在业务代码里跑 AutoMigrate。
