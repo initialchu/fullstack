@@ -27,9 +27,11 @@ fullstack/
 │   │   └── db.go            # 数据库连接初始化
 │   ├── router/              # 路由
 │   │   └── router.go        # 路由注册
+│   ├── middlewares/         # 中间件
+│   │   └── auth_middleware.go # JWT 认证中间件
 │   ├── controllers/         # 控制器（处理请求）
-│   │   ├── auth_controller.go       # 用户认证（注册/登录）
-│   │   └── auth_rate_controller.go  # 汇率数据接口
+│   │   ├── auth_controller.go        # 用户认证（注册/登录）
+│   │   └── auth_rate_controller.go   # 汇率数据接口
 │   ├── models/              # 数据模型
 │   │   ├── user.go          # 用户模型
 │   │   └── exchange_rate.go # 汇率模型
@@ -84,7 +86,8 @@ go run main.go
 
 | 方法 | 路径              | 说明     | 认证 |
 |------|-------------------|----------|------|
-| POST | /api/exchange-rate| 新增汇率 | 是   |
+| GET  | /api/exchangerate | 查询全部 | 否   |
+| POST | /api/exchangerate | 新增汇率 | 是   |
 
 ## 请求示例
 
@@ -104,11 +107,17 @@ curl -X POST http://localhost:3000/api/auth/login \
   -d '{"username":"alice","password":"123456"}'
 ```
 
-### 新增汇率
+### 新增汇率（需认证）
 
 ```bash
-curl -X POST http://localhost:3000/api/exchange-rate \
+curl -X POST http://localhost:3000/api/exchangerate \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
   -d '{"fromCurrency":"USD","toCurrency":"CNY","rate":7.25}'
+```
+
+### 查询所有汇率
+
+```bash
+curl -X GET http://localhost:3000/api/exchangerate
 ```

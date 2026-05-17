@@ -2,6 +2,7 @@ package router
 
 import (
 	"exchangeapp/controllers"
+	"exchangeapp/middlewares"
 
 	"github.com/gin-gonic/gin"
 )
@@ -16,6 +17,14 @@ func SetupRouter() *gin.Engine {
 		auth.POST("/register", controllers.Register)
 	}
 
+	api := r.Group("/api")
+	//不需要jwt认证的路由
+	api.GET("/exchangerate", controllers.GetExchangeRate)
+	//需要jwt认证的路由
+	api.Use(middlewares.AuthMiddleware())
+	{
+		api.POST("/exchangerate", controllers.CreateExchangeRate)
+	}
 	return r
 
 }
