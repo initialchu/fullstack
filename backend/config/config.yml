@@ -5,6 +5,6 @@ app:
   port: :3000
 
 database:
-  dsn: root:root@tcp(localhost:3307)/fullstack?charset=utf8mb4&parseTime=True&loc=Local
+  dsn: root:root@tcp(127.0.0.1:3307)/fullstack?charset=utf8mb4&parseTime=True&loc=Local
   MaxIdleConns: 10
   MaxOpenConns: 100
