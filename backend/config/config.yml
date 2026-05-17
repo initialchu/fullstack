@@ -1,7 +1,7 @@
 #这里是配置文件，用来记录关键信息
 
 app:
-  name:CurrencyExchange
+  name: CurrencyExchange
   port: 3000
 
 database:

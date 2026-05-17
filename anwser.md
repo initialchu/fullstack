@@ -60,3 +60,56 @@ func InitConfig() {
 | `log.Printf` | 只打印，不退出 |
 | `log.Panicf` | 打印后触发 panic（可被 recover 捕获） |
 | `log.Fatalf` | 打印后直接 `os.Exit(1)`，无法捕获 |
+
+---
+
+# import 引用错误排查
+
+**现象：** `main.go` 中 `import "fullstack/config"` 报错
+
+**原因：** Go 的 import 路径 = `go.mod` 中 `module` 声明的值 + 子目录路径。你的 `go.mod` 里写的是：
+
+```
+module exchangeapp
+```
+
+但 `main.go` 的 import 写的是：
+
+```go
+import "fullstack/config"
+```
+
+模块名 `exchangeapp` ≠ `fullstack`，所以 Go 找不到这个包。
+
+**修复：** 将 import 路径改为与 `go.mod` 中的模块名一致：
+
+```go
+import "exchangeapp/config"
+```
+
+> 规则：Go import 路径的根是模块名（`go.mod` 的 `module` 行），不是外层文件夹名。
+
+---
+
+# Viper 读取 YAML 配置报错
+
+**错误信息：**
+```
+Error reading config file: While parsing config: yaml: line 5: mapping values are not allowed in this context
+```
+
+**原因：** YAML 要求冒号后必须有空格才能识别为键值对。配置文件中第 4 行缺少空格：
+
+```yaml
+# ❌ 错误写法
+app:
+  name:CurrencyExchange   # 冒号后没空格，被当成普通字符串
+  port: 3000              # 解析器在这里才报错
+
+# ✅ 正确写法
+app:
+  name: CurrencyExchange   # 冒号后必须有空格
+  port: 3000
+```
+
+> YAML 语法规则：`key: value` 的冒号后面必须跟一个空格，否则 `key:value` 会被整体视为一个字符串而不是一个映射项。
