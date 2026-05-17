@@ -1,0 +1,12 @@
+#这里是配置文件，用来记录关键信息
+
+app:
+  name:CurrencyExchange
+  port: 3000
+
+database:
+  host: localhost
+  port: 3307
+  user: root
+  password: root
+  name: fullstack
