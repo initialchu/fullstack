@@ -369,3 +369,35 @@ ctx.JSON(200, gin.H{"token": token})
 验证用户名密码通过后，发 token 作为后续请求的身份凭证（后续请求带 token，服务端就知道是谁在操作）。
 
 **本质上**：注册 = 创建用户 + 登录，两步合二为一，所以接口行为一致，都返回 token。
+
+---
+
+# GORM `Find` 查询全表
+
+```go
+if err := global.Db.Find(&exchangeRates).Error; err != nil {
+    ctx.JSON(http.StatusInternalServerError, gin.H{
+        "error": err.Error(),
+    })
+    return
+}
+```
+
+**`Find(&exchangeRates)`** — 查询表中**所有**记录，写入切片。
+
+等同于 SQL：
+```sql
+SELECT * FROM exchange_rates;
+```
+
+**逐层解释：**
+- `Find()` — 不带 `Where` 条件，查全表
+- `&exchangeRates` — 传切片指针，GORM 把查询结果**填充**进去
+- `.Error` — 获取执行错误（连接中断、表不存在等）
+
+**和 `First()` 对比：**
+
+| 方法 | 效果 | 没找到时 |
+|------|------|----------|
+| `First(&user)` | 查**一条** | 返回 `ErrRecordNotFound` |
+| `Find(&slice)` | 查**全部** | 返回空切片，不报错 |

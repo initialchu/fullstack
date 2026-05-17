@@ -40,3 +40,19 @@ func CreateExchangeRate(ctx *gin.Context) {
 	//如果保存成功，返回200状态码和保存的汇率数据
 	ctx.JSON(http.StatusOK, exchangeRate)
 }
+
+// 汇率改变函数
+func GetExchangeRate(ctx *gin.Context) {
+	//结构体切片
+	var exchangeRates []models.ExchangeRate
+	//使用全局数据库连接对象global.Db调用Find方法查询所有的汇率数据，并将结果保存到exchangeRates切片中，如果查询失败，返回500错误和错误信息
+	if err := global.Db.Find(&exchangeRates).Error; err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+	//如果查询成功，返回200状态码和查询到的汇率数据
+	ctx.JSON(http.StatusOK, exchangeRates)
+
+}
