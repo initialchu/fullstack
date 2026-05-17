@@ -203,3 +203,35 @@ mysql.Open(dsn)  →  准备 MySQL 驱动（"拨号盘"）
 gorm.Open(...)   →  真正连接数据库（"按下拨号键"）
 if err != nil    →  失败则 log.Fatalf 退出程序
 ```
+
+---
+
+# Bcrypt 是什么
+
+**Bcrypt** 是一个专门用于密码存储的单向哈希算法。
+
+**核心特点：**
+
+1. **自带盐值（Salt）** — 每次哈希自动生成不同的随机盐，相同密码两次哈希结果完全不同，防止彩虹表攻击
+2. **可调节计算成本** — 有一个 `cost` 参数（通常 10~14），越大越慢。cost 加 1，计算时间翻倍，能抵抗硬件升级带来的暴力破解
+3. **单向不可逆** — 无法从哈希值反推出明文，只能通过"用户输入 → 哈希 → 比对"来验证
+
+**Go 中使用（golang.org/x/crypto/bcrypt）：**
+
+```go
+import "golang.org/x/crypto/bcrypt"
+
+// 加密：把明文密码变成哈希值
+hash, err := bcrypt.GenerateFromPassword([]byte("123456"), bcrypt.DefaultCost)
+// hash 形如: $2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+//          ↑    ↑
+//       算法  cost值
+
+// 验证：比对用户输入和数据库中存的哈希
+err := bcrypt.CompareHashAndPassword(savedHash, []byte("123456"))
+if err != nil {
+    // 密码错误
+}
+```
+
+**为什么不用 MD5/SHA256？** 那些是通用哈希，计算太快，攻击者一秒能试几十亿次。Bcrypt 故意做得慢（一次约 0.1~0.3 秒），用户登录没体感，但对暴力破解是致命打击。
