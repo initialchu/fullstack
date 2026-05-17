@@ -401,3 +401,133 @@ SELECT * FROM exchange_rates;
 |------|------|----------|
 | `First(&user)` | 查**一条** | 返回 `ErrRecordNotFound` |
 | `Find(&slice)` | 查**全部** | 返回空切片，不报错 |
+
+---
+
+# Gin 中间件写法：AuthMiddleware
+
+```go
+func AuthMiddleware() gin.HandlerFunc {
+    return func(ctx *gin.Context) {
+        token := ctx.GetHeader("Authorization")
+        if token == "" {
+            ctx.JSON(http.StatusUnauthorized, gin.H{
+                "error": "Authorization header is missing",
+            })
+            ctx.Abort()
+            return
+        }
+    }
+}
+```
+
+**`gin.HandlerFunc`** — 本质是 `func(*gin.Context)` 的别名，Gin 中间件和处理器都遵循这个签名。
+
+**为什么要包一层闭包（`return func`）？**
+
+- 闭包 = 外层函数 + 内层返回 `func(*gin.Context)`
+- 好处：后续想加参数时不需要改调用方的代码，比如 `AuthMiddleware("admin")` 按角色鉴权
+- 外层传参，内层使用，对外接口保持不变
+
+**`ctx *gin.Context` 参数怎么来的？**
+
+Gin 框架收到请求时自动创建 `*gin.Context`，封装了该次请求的全部信息（请求头、请求体、参数、响应方法），然后传入中间件链。开发者只负责从 `ctx` 取数据、写响应。
+
+**`ctx.GetHeader("Authorization")`** — 从 HTTP 请求头取 `Authorization` 字段，客户端 JWT 通常放在这里。
+
+**`ctx.Abort()`** — 核心！只返回 JSON 不会中断流程，必须调用 `Abort()` 才能阻止后续中间件和处理器继续执行。`return` 退出当前函数，`Abort()` 阻止 Gin 继续往下调。
+
+**整体流程：**
+```
+请求进来 → Gin 创建 ctx → 进入 AuthMiddleware
+                              → 取 Authorization 头
+                              → 为空？返回 401 + Abort()，请求终止
+                              → 不为空？验证 token，通过则 c.Next()
+```
+
+---
+
+# Bearer Token 格式修复
+
+在 `utils.go` 中生成 JWT 时：
+
+```go
+// ❌ 错误：Bearer 和 token 之间没有空格
+return "Bearer" + Token, err
+
+// ✅ 正确：必须有空格
+return "Bearer " + Token, err
+```
+
+**原因：** HTTP `Authorization` 头的标准格式是 `Bearer <token>`，中间必须有空格。没有空格的话，中间件按空格分割取第二部分时，拿到的不是纯 token，导致验证失败。
+
+---
+
+# `ParseJWT` 解析与验证令牌
+
+```go
+func ParseJWT(tokenString string) (string, error) {
+    if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+        tokenString = tokenString[7:]
+    }
+    token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, errors.New("unexpected signing method")
+        }
+        return []byte("secret"), nil
+    })
+    if err != nil {
+        return "", err
+    }
+    if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+        username, ok := claims["username"].(string)
+        if !ok {
+            return "", errors.New("username claim is not a string")
+        }
+        return username, nil
+    }
+    return "", err
+}
+```
+
+**第 1 步：去掉 `Bearer ` 前缀**
+
+```go
+if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+    tokenString = tokenString[7:]
+}
+```
+
+- `len(tokenString) > 7` — 安全判断，防止空串或短字符串越界
+- `tokenString[:7]` — 取前 7 个字符比对标不标准 `"Bearer "`
+- `tokenString[7:]` — 截掉前 7 个字符，剩下纯 token
+
+**第 2 步：解析并验证签名**
+
+```go
+token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+    if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+        return nil, errors.New("unexpected signing method")
+    }
+    return []byte("secret"), nil
+})
+```
+
+- `jwt.Parse(待解析token, 密钥回调)` — 解析和验证二合一
+- **回调函数**：库先读 header 中的 `alg` 字段，然后调用你的回调，你返回对应的密钥，库完成签名比对
+- **`token.Method.(*jwt.SigningMethodHMAC)`** — 类型断言，确认使用 HMAC 算法。防止攻击者伪造 `"alg":"none"` 的 token 绕过验证
+- **`return []byte("secret")`** — 返回与生成时相同的密钥
+
+**第 3 步：提取载荷中的用户名**
+
+```go
+if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+    username, ok := claims["username"].(string)
+    // ...
+    return username, nil
+}
+```
+
+- `token.Claims.(jwt.MapClaims)` — 类型断言，把 Claims 转成 map 方便取值
+- `.Valid` — 库已自动校验 `exp`（过期），过期则为 `false`
+- `claims["username"].(string)` — 从 map 取值再做类型断言，确保值确实是 string
