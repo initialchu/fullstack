@@ -10,6 +10,7 @@ Go + Gin + GORM + MySQL 全栈实战项目
 - [GORM](https://gorm.io/) — ORM 框架
 - [Viper](https://github.com/spf13/viper) — 配置管理
 - [Bcrypt](https://pkg.go.dev/golang.org/x/crypto/bcrypt) — 密码哈希
+- [JWT](https://github.com/golang-jwt/jwt) — 身份认证令牌
 
 **数据库：**
 - MySQL
@@ -27,13 +28,15 @@ fullstack/
 │   ├── router/              # 路由
 │   │   └── router.go        # 路由注册
 │   ├── controllers/         # 控制器（处理请求）
-│   │   └── auth_controller.go
+│   │   ├── auth_controller.go       # 用户认证（注册/登录）
+│   │   └── auth_rate_controller.go  # 汇率数据接口
 │   ├── models/              # 数据模型
-│   │   └── user.go          # 用户模型
+│   │   ├── user.go          # 用户模型
+│   │   └── exchange_rate.go # 汇率模型
 │   ├── global/              # 全局变量
-│   │   └── global.go
+│   │   └── global.go        # 数据库连接实例
 │   └── utils/               # 工具函数
-│       └── utils.go
+│       └── utils.go         # 密码哈希、JWT 生成与验证
 ```
 
 ## 快速开始
@@ -70,8 +73,42 @@ go run main.go
 
 ## API
 
-| 方法 | 路径              | 说明     |
-|------|-------------------|----------|
-| POST | /api/auth/register| 用户注册 |
-| POST | /api/auth/login   | 用户登录 |
-| GET  | /ping             | 健康检查 |
+### 用户认证
+
+| 方法 | 路径              | 说明     | 认证 |
+|------|-------------------|----------|------|
+| POST | /api/auth/register| 用户注册 | 否   |
+| POST | /api/auth/login   | 用户登录 | 否   |
+
+### 汇率管理
+
+| 方法 | 路径              | 说明     | 认证 |
+|------|-------------------|----------|------|
+| POST | /api/exchange-rate| 新增汇率 | 是   |
+
+## 请求示例
+
+### 注册
+
+```bash
+curl -X POST http://localhost:3000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"123456"}'
+```
+
+### 登录
+
+```bash
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"123456"}'
+```
+
+### 新增汇率
+
+```bash
+curl -X POST http://localhost:3000/api/exchange-rate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"fromCurrency":"USD","toCurrency":"CNY","rate":7.25}'
+```
