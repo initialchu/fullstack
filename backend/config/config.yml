@@ -5,8 +5,6 @@ app:
   port: :3000
 
 database:
-  host: localhost
-  port: :3307
-  user: root
-  password: root
-  name: fullstack
+  dsn: root:root@tcp(localhost:3307)/fullstack?charset=utf8mb4&parseTime=True&loc=Local
+  MaxIdleConns: 10
+  MaxOpenConns: 100

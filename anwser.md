@@ -169,3 +169,37 @@ return r
 POST  /api/auth/login     →  {"message": "Login successful"}
 POST  /api/auth/register  →  {"message": "Register successful"}
 ```
+
+---
+
+# GORM 数据库连接解释
+
+```go
+db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+```
+
+这行代码分两层理解：
+
+**内层 `mysql.Open(dsn)`** — MySQL 专用的拨号器（Dialector）：
+- `dsn`（Data Source Name）是数据库连接字符串，格式如 `user:password@tcp(host:port)/dbname?charset=utf8&parseTime=true`
+- 返回一个 `gorm.Dialector`，表示"准备好连 MySQL 了"，但此时还没真正连接
+
+**外层 `gorm.Open(拨号器, &gorm.Config{})`** — GORM 的核心入口：
+- 第一个参数：数据库驱动，告诉 GORM 连的是什么库
+- 第二个参数：`&gorm.Config{}`，GORM 自身配置（日志、命名策略等），这里用默认值
+- 真正执行数据库连接
+- 返回 `db`（后续所有 CRUD 都通过它）和 `err`（连接失败的信息）
+
+**`:=`（短变量声明）** — 同时声明并赋值，自动推导类型，等价于：
+```go
+var db *gorm.DB
+var err error
+db, err = gorm.Open(...)
+```
+
+**整体流程：**
+```
+mysql.Open(dsn)  →  准备 MySQL 驱动（"拨号盘"）
+gorm.Open(...)   →  真正连接数据库（"按下拨号键"）
+if err != nil    →  失败则 log.Fatalf 退出程序
+```
