@@ -3,6 +3,7 @@ module exchangeapp
 go 1.26.1
 
 require (
+	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/spf13/viper v1.21.0
 	golang.org/x/crypto v0.51.0
 	gorm.io/driver/mysql v1.6.0

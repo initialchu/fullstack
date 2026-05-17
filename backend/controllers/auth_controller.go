@@ -27,4 +27,14 @@ func Register(ctx *gin.Context) {
 	}
 	//将哈希后的密码赋值回user结构体的Password字段
 	user.Password = hashedPwd
+	token, err := utils.GenerateJWT(user.Username)
+	if err != nil {
+		ctx.JSON(500, gin.H{
+			"error": "Failed to generate token",
+		})
+		return
+	}
+	ctx.JSON(200, gin.H{
+		"token": token,
+	})
 }
