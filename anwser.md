@@ -235,3 +235,21 @@ if err != nil {
 ```
 
 **为什么不用 MD5/SHA256？** 那些是通用哈希，计算太快，攻击者一秒能试几十亿次。Bcrypt 故意做得慢（一次约 0.1~0.3 秒），用户登录没体感，但对暴力破解是致命打击。
+
+---
+
+# `[]byte(pwd)` 类型转换
+
+`[]byte(pwd)` 是 Go 的**类型转换**，把 `string` 转成 `[]byte`（字节切片）。
+
+Go 中 `string` 和 `[]byte` 底层结构相似，可以互转：
+
+```go
+s := "hello"
+b := []byte(s)     // string → []byte → [104 101 108 108 111]
+
+b2 := []byte{104, 101, 108, 108, 111}
+s2 := string(b2)   // []byte → string → "hello"
+```
+
+**Bcrypt 中为什么需要？** `bcrypt.GenerateFromPassword` 和 `bcrypt.CompareHashAndPassword` 的参数类型是 `[]byte`，不是 `string`，所以必须转换。这是该库的设计选择，因为密码这种敏感数据用 `[]byte` 可以在用完后手动清零，而 `string` 是不可变的，会一直留在内存中直到 GC 回收。
