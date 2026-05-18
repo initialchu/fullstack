@@ -579,3 +579,122 @@ if err := global.RedisDB.Incr(likeKey).Err(); err != nil {
 **调用这个函数前，Redis 里可能根本没有** `article:1:likes` **这个键；调用后一定存在，值至少为 1。**
 
 不需要先检查 key 是否存在、也不需要手动初始化为 0——Redis 的 `INCR` 原子操作天然帮你处理了。既省了代码，又保证了并发安全（两个请求同时点赞不会导致计数错误）。
+
+---
+
+# GORM 哪些方法可以接 `.Error`？
+
+GORM 链式方法分两类：
+
+**终结方法（可以接 `.Error`）** — 真正执行 SQL，`Error` 字段会被填充：
+
+| 方法 | 作用 |
+|------|------|
+| `Find(&slice)` | 查询多条 |
+| `First(&struct)` | 查询一条 |
+| `Create(&struct)` | 插入 |
+| `Save(&struct)` | 保存 |
+| `Delete(&struct)` | 删除 |
+| `Update("col", val)` | 更新 |
+
+```go
+// ✅ 有意义的 .Error
+global.Db.Find(&articles).Error
+global.Db.Create(&article).Error
+```
+
+**中间方法（接 `.Error` 无意义）** — 只构建查询条件，不访问数据库，`Error` 永远是 `nil`：
+
+| 方法 | 作用 |
+|------|------|
+| `Where(...)` | 加条件 |
+| `Order(...)` | 排序 |
+| `Limit(n)` | 限制行数 |
+| `Select(...)` | 选择字段 |
+
+```go
+// ❌ 无意义，永远是 nil
+global.Db.Where("id=?", 1).Error
+```
+
+> 判断规则：只有真正访问数据库的方法才会填充 `Error`，纯拼 SQL 片段的方法永远不出错。
+
+---
+
+# go-redis 为什么需要 `.Result()`？
+
+```go
+cachedData, err := global.RedisDB.Get(cacheKey).Result()
+```
+
+**`Get()` 返回的是 `*redis.StringCmd`，不是直接的结果。**
+
+**为什么这样设计？**
+
+1. **统一返回模式** — 所有命令都返回 `(结果, error)` 对，写法一致
+2. **多结果选择** — 同一个命令包装器提供多种取值方式：
+   - `.Result()` → `(string, error)`，通用
+   - `.Int()` → `(int, error)`，用于 `Incr` 等
+   - `.Float64()` → `(float64, error)`
+3. **延迟执行** — 可以先发命令，稍后再取结果（Pipeline 场景）
+
+**常见对应关系：**
+
+| Redis 方法 | 返回的包装类型 | 取值方法 |
+|------------|--------------|----------|
+| `Get(key)` | `*StringCmd` | `.Result()` |
+| `Incr(key)` | `*IntCmd` | `.Result()` |
+| `HGet(key, field)` | `*StringCmd` | `.Result()` |
+| `SAdd(key, vals...)` | `*IntCmd` | `.Result()` |
+
+> 判断规则：返回类型以 `*xxxCmd` 结尾就必须接 `.Result()`（或 `.Err()` 只要错误）。
+
+---
+
+# 旁路缓存（Cache-Aside）模式
+
+```go
+func GetArticles(ctx *gin.Context) {
+    cachedData, err := global.RedisDB.Get(cacheKey).Result()
+    if err == redis.Nil {
+        // 缓存未命中 → 查 MySQL
+        var articles []models.Article
+        global.Db.Find(&articles)
+        // 回填缓存
+        articleJSON, _ := json.Marshal(articles)
+        global.RedisDB.Set(cacheKey, articleJSON, 10*time.Minute)
+        ctx.JSON(200, articles)
+    } else if err != nil {
+        // Redis 挂了
+        ctx.JSON(500, gin.H{"error": err.Error()})
+    } else {
+        // 缓存命中 → 反序列化返回
+        var articles []models.Article
+        json.Unmarshal([]byte(cachedData), &articles)
+        ctx.JSON(200, articles)
+    }
+}
+```
+
+**整体流程：**
+```
+请求 → 先查 Redis
+         ├─ 命中 → json.Unmarshal → 直接返回（0.1ms）
+         └─ 未命中 → 查 MySQL → json.Marshal → 写 Redis → 返回
+```
+
+**各函数职责：**
+
+| 函数 | 作用 | 为什么需要 |
+|------|------|-----------|
+| `RedisDB.Get()` | 查缓存 | 内存操作 0.1ms，挡住大部分请求 |
+| `json.Marshal()` | Go struct → JSON | Redis 只能存字节/字符串 |
+| `RedisDB.Set(key, val, 10min)` | 回填缓存 | TTL 必须设，防内存膨胀和数据永远陈旧 |
+| `json.Unmarshal()` | JSON → Go struct | 缓存中的 JSON 还原成 Go 结构体 |
+
+**旁路缓存的优点：**
+1. **读性能大幅提升** — Redis 0.1ms vs MySQL 3~10ms
+2. **减轻数据库压力** — 99% 读请求被 Redis 拦截
+3. **实现简单** — 三行判断命中/未命中，不需要额外中间件
+4. **容错性好** — Redis 挂了只是多一次延迟，不会直接崩溃
+5. **数据自动刷新** — TTL 过期后自动从 MySQL 拉最新数据
