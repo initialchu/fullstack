@@ -1,6 +1,6 @@
 # 汇率兑换应用 (Currency Exchange App)
 
-Go + Gin + GORM + MySQL 全栈实战项目
+Go + Gin + GORM + MySQL + Redis 全栈实战项目
 
 ## 技术栈
 
@@ -11,45 +11,55 @@ Go + Gin + GORM + MySQL 全栈实战项目
 - [Viper](https://github.com/spf13/viper) — 配置管理
 - [Bcrypt](https://pkg.go.dev/golang.org/x/crypto/bcrypt) — 密码哈希
 - [JWT](https://github.com/golang-jwt/jwt) — 身份认证令牌
+- [go-redis](https://github.com/go-redis/redis) — Redis 客户端
 
 **数据库：**
 - MySQL
+- Redis
 
 ## 项目结构
 
 ```
 fullstack/
 ├── backend/
-│   ├── main.go              # 入口文件
-│   ├── config/              # 配置相关
-│   │   ├── config.go        # 配置结构体 & Viper 加载
-│   │   ├── config.yml       # YAML 配置文件
-│   │   └── db.go            # 数据库连接初始化
-│   ├── router/              # 路由
-│   │   └── router.go        # 路由注册
-│   ├── middlewares/         # 中间件
-│   │   └── auth_middleware.go # JWT 认证中间件
-│   ├── controllers/         # 控制器（处理请求）
+│   ├── main.go                   # 入口文件
+│   ├── config/                   # 配置相关
+│   │   ├── config.go             # 配置结构体 & Viper 加载
+│   │   ├── config.yml            # YAML 配置文件
+│   │   ├── db.go                 # MySQL 连接初始化
+│   │   └── redis.go             # Redis 连接初始化
+│   ├── router/                   # 路由
+│   │   └── router.go             # 路由注册
+│   ├── middlewares/              # 中间件
+│   │   └── auth_middleware.go    # JWT 认证中间件
+│   ├── controllers/              # 控制器（处理请求）
 │   │   ├── auth_controller.go        # 用户认证（注册/登录）
-│   │   └── auth_rate_controller.go   # 汇率数据接口
-│   ├── models/              # 数据模型
-│   │   ├── user.go          # 用户模型
-│   │   └── exchange_rate.go # 汇率模型
-│   ├── global/              # 全局变量
-│   │   └── global.go        # 数据库连接实例
-│   └── utils/               # 工具函数
-│       └── utils.go         # 密码哈希、JWT 生成与验证
+│   │   ├── auth_rate_controller.go   # 汇率数据接口
+│   │   ├── article_controller.go     # 文章 CRUD
+│   │   └── like_controller.go        # 点赞功能（Redis）
+│   ├── models/                   # 数据模型
+│   │   ├── user.go               # 用户模型
+│   │   ├── exchange_rate.go      # 汇率模型
+│   │   └── article.go            # 文章模型
+│   ├── global/                   # 全局变量
+│   │   └── global.go             # MySQL & Redis 连接实例
+│   └── utils/                    # 工具函数
+│       └── utils.go              # 密码哈希、JWT 生成与验证
 ```
 
 ## 快速开始
 
-### 1. 创建数据库
+### 1. 环境准备
+
+确保已安装并启动 MySQL 和 Redis。
+
+### 2. 创建数据库
 
 ```sql
 CREATE DATABASE fullstack CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 2. 修改配置
+### 3. 修改配置
 
 编辑 `backend/config/config.yml`，根据你的环境修改数据库连接信息：
 
@@ -58,14 +68,16 @@ database:
   dsn: root:你的密码@tcp(localhost:3306)/fullstack?charset=utf8mb4&parseTime=True&loc=Local
 ```
 
-### 3. 安装依赖
+Redis 配置在 `backend/config/redis.go` 中，默认连接 `localhost:6379`，无需密码。
+
+### 4. 安装依赖
 
 ```bash
 cd backend
 go mod tidy
 ```
 
-### 4. 运行
+### 5. 运行
 
 ```bash
 go run main.go
@@ -89,6 +101,21 @@ go run main.go
 | GET  | /api/exchangerate | 查询全部 | 否   |
 | POST | /api/exchangerate | 新增汇率 | 是   |
 
+### 文章管理
+
+| 方法 | 路径                   | 说明       | 认证 |
+|------|-----------------------|------------|------|
+| POST | /api/articles          | 创建文章   | 是   |
+| GET  | /api/articles          | 查询全部   | 是   |
+| GET  | /api/articles/:id      | 查询单篇   | 是   |
+
+### 点赞功能
+
+| 方法 | 路径                     | 说明       | 认证 |
+|------|-------------------------|------------|------|
+| POST | /api/articles/:id/like   | 点赞文章   | 是   |
+| GET  | /api/articles/:id/like   | 查询点赞数 | 是   |
+
 ## 请求示例
 
 ### 注册
@@ -107,7 +134,7 @@ curl -X POST http://localhost:3000/api/auth/login \
   -d '{"username":"alice","password":"123456"}'
 ```
 
-### 新增汇率（需认证）
+### 新增汇率
 
 ```bash
 curl -X POST http://localhost:3000/api/exchangerate \
@@ -116,8 +143,25 @@ curl -X POST http://localhost:3000/api/exchangerate \
   -d '{"fromCurrency":"USD","toCurrency":"CNY","rate":7.25}'
 ```
 
-### 查询所有汇率
+### 创建文章
 
 ```bash
-curl -X GET http://localhost:3000/api/exchangerate
+curl -X POST http://localhost:3000/api/articles \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"title":"我的第一篇文章","content":"这是文章正文内容","preview":"这是文章摘要"}'
+```
+
+### 点赞文章
+
+```bash
+curl -X POST http://localhost:3000/api/articles/1/like \
+  -H "Authorization: Bearer <token>"
+```
+
+### 查询文章点赞数
+
+```bash
+curl -X GET http://localhost:3000/api/articles/1/like \
+  -H "Authorization: Bearer <token>"
 ```
