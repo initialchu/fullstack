@@ -531,3 +531,32 @@ if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 - `token.Claims.(jwt.MapClaims)` — 类型断言，把 Claims 转成 map 方便取值
 - `.Valid` — 库已自动校验 `exp`（过期），过期则为 `false`
 - `claims["username"].(string)` — 从 map 取值再做类型断言，确保值确实是 string
+
+---
+
+# 为什么用 Redis？跟 MySQL 是什么关系？
+
+**MySQL 和 Redis 不是替代关系，是协作关系。**
+
+**MySQL 的问题：** 每次查询走磁盘 I/O，即便用 B+ 树索引也要几毫秒。高并发下几百个请求同时查汇率，MySQL 撑不住。
+
+**Redis 的优势：**
+1. **纯内存操作** — 数据在内存中，单次读取 0.1 毫秒，比 MySQL 快几十倍
+2. **缓存高频数据** — 汇率短时间内不变，不需要每次都查 MySQL。启动时从 MySQL 加载进 Redis，后续直接读 Redis
+3. **减轻 MySQL 压力** — 99% 的读请求被 Redis 拦截，MySQL 只处理写操作
+
+**协作流程：**
+```
+客户端请求汇率
+    → 先查 Redis（有就直接返回，0.1ms）
+    → Redis 没命中 → 查 MySQL → 写入 Redis → 返回
+```
+
+**各自职责：**
+
+| | MySQL | Redis |
+|------|-------|-------|
+| 职责 | 持久化存储（数据不丢） | 加速读取（扛并发） |
+| 速度 | 毫秒级 | 0.1 毫秒级 |
+| 存储 | 磁盘 | 内存 |
+| 数据 | 永久 | 可设置过期 |

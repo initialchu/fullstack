@@ -39,4 +39,5 @@ func InitConfig() {
 		log.Fatalf("Error unmarshaling config: %v", err)
 	}
 	InitDB()
+	InitRedis()
 }
