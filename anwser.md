@@ -560,3 +560,22 @@ if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 | 速度 | 毫秒级 | 0.1 毫秒级 |
 | 存储 | 磁盘 | 内存 |
 | 数据 | 永久 | 可设置过期 |
+
+---
+
+# Redis `INCR` 点赞计数
+
+```go
+likeKey := "article:" + articleID + ":likes"
+if err := global.RedisDB.Incr(likeKey).Err(); err != nil {
+    // ...
+}
+```
+
+**`INCR` 的行为：**
+- key **不存在** → Redis 先自动设值为 `0`，再 `+1`，返回 `1`
+- key **已存在** → 直接在现有值上 `+1`
+
+**调用这个函数前，Redis 里可能根本没有** `article:1:likes` **这个键；调用后一定存在，值至少为 1。**
+
+不需要先检查 key 是否存在、也不需要手动初始化为 0——Redis 的 `INCR` 原子操作天然帮你处理了。既省了代码，又保证了并发安全（两个请求同时点赞不会导致计数错误）。

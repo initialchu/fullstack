@@ -24,6 +24,11 @@ func SetupRouter() *gin.Engine {
 	api.Use(middlewares.AuthMiddleware())
 	{
 		api.POST("/exchangerate", controllers.CreateExchangeRate)
+		api.POST("/articles", controllers.CreateArticle)
+		api.GET("/articles", controllers.GetArticles)
+		api.GET("/articles/:id", controllers.GetArticleByID)
+		api.GET("/articles/:id/like", controllers.GetLikes)
+		api.POST("/articles/:id/like", controllers.LikeArticle)
 	}
 	return r
 
