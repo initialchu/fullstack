@@ -698,3 +698,223 @@ func GetArticles(ctx *gin.Context) {
 3. **实现简单** — 三行判断命中/未命中，不需要额外中间件
 4. **容错性好** — Redis 挂了只是多一次延迟，不会直接崩溃
 5. **数据自动刷新** — TTL 过期后自动从 MySQL 拉最新数据
+
+---
+
+# 缓存删除后返回，数据会丢失吗？
+
+在 `CreateArticle` 中：
+
+```go
+global.Db.Create(&article)        // 1. 先写 MySQL
+global.RedisDB.Del(cacheKey)      // 2. 再删缓存
+ctx.JSON(200, article)            // 3. 返回新文章
+```
+
+**不会丢失，因为三个步骤各走各的路：**
+
+```
+1. Create(&article)  →  MySQL 已持久化（数据安全）
+2. Del(cacheKey)     →  删的是缓存中的旧列表（不包含新文章）
+3. JSON(200, article) →  返回的是内存变量 article，不经过缓存
+```
+
+- 第 2 步是**缓存失效**——旧的 `articles` 列表里没有这条新文章，删掉
+- 下次有人 `GET /api/articles` → 缓存未命中 → 从 MySQL 重新查全量 → 回填 Redis，新列表就包含新文章了
+- 第 3 步返回的 `article` 是第 1 步写入时就存在的内存变量，和缓存无关
+
+> 类比：更新纸质原档（MySQL）后，把前台旧复印件扔掉（Redis），明天有人来拿时重新复印最新版。你手里正在看的那页不受影响。
+
+---
+
+# 开发/生产环境跨域处理方案
+
+**生产环境：** Nginx 在反向代理层处理 CORS，Go 代码不加 CORS 中间件。
+
+**开发环境（三个方案）：**
+
+**方案 1：Vite 代理（推荐）**
+
+在 Vue3 前端 `vite.config.js` 中配置代理：
+
+```js
+export default defineConfig({
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      }
+    }
+  }
+})
+```
+
+原理：前端发请求到同源（`localhost:5173/api/...`），Vite 自动转发到 Go 后端，浏览器认为是同源，不存在跨域。不改 Go 代码，不引入额外依赖，是前端开发标配。
+
+**方案 2：Go 代码条件加载 CORS**
+
+```go
+if os.Getenv("ENV") == "dev" {
+    r.Use(cors.Default())
+}
+```
+
+**方案 3：浏览器插件**
+
+装 Chrome 的 "Allow CORS" 插件，最简单但不推荐团队使用——每个人都要装，且可能忘记关。
+
+> 推荐方案 1，开发环境用 Vite proxy，生产环境用 Nginx，Go 代码始终保持干净。
+
+---
+
+# Go 包级别变量的作用域
+
+```go
+var AppConfig *Config
+```
+
+**作用域不是目录，是按包（package）。**
+
+Go 强制同目录下所有 `.go` 文件声明同一个 `package`，所以效果上等同于同目录都能用，但本质是按包：
+
+```
+backend/config/
+├── config.go   →  package config  →  var AppConfig *Config（定义）
+├── db.go       →  package config  →  直接用 AppConfig ✓
+└── redis.go    →  package config  →  直接用 AppConfig ✓
+```
+
+**同目录 = 同包 = 自然共享所有变量，不用 import，不用传参。**
+
+**大写 vs 小写：**
+
+```go
+var AppConfig *Config  // 大写 → 跨包可见，config.AppConfig
+var appConfig *Config  // 小写 → 仅包内可见，config 包外访问不了
+```
+
+> 核心规则：小写 = 包内私有，大写 = 跨包公开。同目录下所有文件属于同一个包，自然共享一切。
+
+---
+
+# `os.Getenv` 与 `.env` 文件
+
+**`os.Getenv` 不能读取 `.env` 文件。**
+
+它只读取操作系统级别的环境变量（shell 里 `export` 设置或启动时传入的）。要读 `.env` 文件，Go 需要引入 `github.com/joho/godotenv`：
+
+```go
+import "github.com/joho/godotenv"
+
+func main() {
+    godotenv.Load()           // 加载 .env 文件
+    env := os.Getenv("ENV")   // 现在才能拿到 .env 里的值
+}
+```
+
+**一个项目可以有多个 `.env` 文件：**
+
+前后端是各自独立进程，各有各的目录和 `.env`：
+
+```
+fullstack/
+├── backend/
+│   └── .env    ← Go 后端：数据库密码、JWT 密钥等
+├── frontend/
+│   └── .env    ← Vue 前端：VITE_API_BASE_URL 等
+```
+
+这是标准做法——两个应用配置需求不同，不共享一个 `.env`。
+
+**Vite vs Go：** 前端 Vite 自动读取 `.env`（变量需 `VITE_` 前缀），Go 的 `os.Getenv` 不会自动读，必须用 godotenv 手动加载。
+
+---
+
+# 用 `.env` 区分开发/生产环境（router.go 实践）
+
+**1. `main.go` 最前面加载 `.env`：**
+
+```go
+func main() {
+    godotenv.Load()            // 注入 .env 到进程环境变量
+    config.InitConfig()
+    r := router.SetupRouter()  // 此时 os.Getenv("ENV") 能读到了
+    r.Run(...)
+}
+```
+
+> 必须在 `main()` 最开头调用——Go 的 `init()` 函数在 `main()` 之前执行，如果 init 里用 `os.Getenv` 会拿不到 `.env` 里的值。
+
+**2. `backend/.env`：**
+
+```
+ENV=dev
+```
+
+**3. `router.go` 中判断环境：**
+
+```go
+func SetupRouter() *gin.Engine {
+    r := gin.Default()
+    if os.Getenv("ENV") == "dev" {
+        r.Use(cors.New(cors.Config{}))  // 开发环境加 CORS
+    }
+    // ... 路由注册
+    return r
+}
+```
+
+**4. `.gitignore` 必须加 `.env`**（避免密码泄露到 GitHub）
+
+**启动时区分环境：**
+
+```bash
+# 开发（读 .env）
+go run main.go
+
+# 生产（不依赖 .env，设真实环境变量）
+ENV=prod go run main.go
+```
+
+---
+
+# CORS `AllowOriginFunc` 参数
+
+`AllowOriginFunc` 是一个动态判断函数，对每个请求来源做自定义逻辑：
+
+```go
+r.Use(cors.New(cors.Config{
+    AllowOriginFunc: func(origin string) bool {
+        // origin = 浏览器发来的完整域名，如 "https://example.com"
+        // 返回 true = 允许，false = 拒绝
+        return strings.HasSuffix(origin, ".trusted.com")
+    },
+}))
+```
+
+**与静态 `AllowOrigins` 对比：**
+
+| 参数 | 用法 | 适用场景 |
+|------|------|----------|
+| `AllowOrigins` | 写死 `["https://a.com"]` | 域名固定、数量少 |
+| `AllowOriginFunc` | 回调动态判断 | 正则匹配、多子域名、查库白名单 |
+
+**典型场景：**
+
+```go
+// 多租户：允许所有 .myapp.com 子域名
+AllowOriginFunc: func(origin string) bool {
+    return strings.HasSuffix(origin, ".myapp.com")
+}
+
+// 开发通配，生产严格
+AllowOriginFunc: func(origin string) bool {
+    if os.Getenv("ENV") == "dev" {
+        return true
+    }
+    return origin == "https://production.com"
+}
+```
+
+> `AllowOriginFunc` 和 `AllowOrigins` 不能同时用，二选一。
