@@ -12,6 +12,10 @@ Go + Gin + GORM + MySQL + Redis 全栈实战项目
 - [Bcrypt](https://pkg.go.dev/golang.org/x/crypto/bcrypt) — 密码哈希
 - [JWT](https://github.com/golang-jwt/jwt) — 身份认证令牌
 - [go-redis](https://github.com/go-redis/redis) — Redis 客户端
+- [gin-contrib/cors](https://github.com/gin-contrib/cors) — CORS 跨域中间件
+
+**前端：**
+- Vue 3 + Vite（开发服务器默认 `localhost:5173`）
 
 **数据库：**
 - MySQL
@@ -27,16 +31,16 @@ fullstack/
 │   │   ├── config.go             # 配置结构体 & Viper 加载
 │   │   ├── config.yml            # YAML 配置文件
 │   │   ├── db.go                 # MySQL 连接初始化
-│   │   └── redis.go             # Redis 连接初始化
+│   │   └── redis.go              # Redis 连接初始化
 │   ├── router/                   # 路由
-│   │   └── router.go             # 路由注册
+│   │   └── router.go             # 路由注册 & CORS 配置
 │   ├── middlewares/              # 中间件
 │   │   └── auth_middleware.go    # JWT 认证中间件
 │   ├── controllers/              # 控制器（处理请求）
 │   │   ├── auth_controller.go        # 用户认证（注册/登录）
 │   │   ├── auth_rate_controller.go   # 汇率数据接口
-│   │   ├── article_controller.go     # 文章 CRUD
-│   │   └── like_controller.go        # 点赞功能（Redis）
+│   │   ├── article_controller.go     # 文章 CRUD + 旁路缓存
+│   │   └── like_controller.go        # 点赞功能（Redis 计数）
 │   ├── models/                   # 数据模型
 │   │   ├── user.go               # 用户模型
 │   │   ├── exchange_rate.go      # 汇率模型
@@ -85,6 +89,10 @@ go run main.go
 
 服务默认运行在 `http://localhost:3000`
 
+### 6. 前后端联调
+
+后端已配置 CORS，允许前端 `http://localhost:5173` 跨域请求（含 Cookie/Token）。
+
 ## API
 
 ### 用户认证
@@ -109,12 +117,19 @@ go run main.go
 | GET  | /api/articles          | 查询全部   | 是   |
 | GET  | /api/articles/:id      | 查询单篇   | 是   |
 
-### 点赞功能
+### 点赞功能（Redis 原子计数）
 
 | 方法 | 路径                     | 说明       | 认证 |
 |------|-------------------------|------------|------|
 | POST | /api/articles/:id/like   | 点赞文章   | 是   |
 | GET  | /api/articles/:id/like   | 查询点赞数 | 是   |
+
+## 架构说明
+
+- **缓存策略**：文章列表采用旁路缓存（Cache-Aside），先查 Redis → 未命中则查 MySQL → 回填 Redis（TTL 10 分钟）
+- **点赞计数**：使用 Redis `INCR` 原子操作，并发安全
+- **身份认证**：JWT（HS256），登录/注册后返回 token，后续请求放 `Authorization: Bearer <token>` 头
+- **CORS**：开发环境允许 `localhost:5173` 跨域，生产环境交给 Nginx 处理
 
 ## 请求示例
 
@@ -149,7 +164,7 @@ curl -X POST http://localhost:3000/api/exchangerate \
 curl -X POST http://localhost:3000/api/articles \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <token>" \
-  -d '{"title":"我的第一篇文章","content":"这是文章正文内容","preview":"这是文章摘要"}'
+  -d '{"title":"我的第一篇文章","content":"文章正文","preview":"文章摘要"}'
 ```
 
 ### 点赞文章

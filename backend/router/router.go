@@ -11,6 +11,7 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 	// 配置 CORS 中间件
+	//开发环境使用，生产环境需要根据实际情况调整
 	r.Use(cors.New(cors.Config{
 		// 指定哪些来源可以发送请求到服务器
 		AllowOrigins: []string{"http://localhost:5173"},
