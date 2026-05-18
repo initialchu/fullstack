@@ -7,7 +7,7 @@ import (
 	"github.com/go-redis/redis"
 )
 
-func InitRedis() *redis.Client {
+func InitRedis() {
 	//创建一个Redis客户端实例，连接到本地的Redis服务器
 	RedisClient := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379", // Redis服务器地址和端口
@@ -19,6 +19,5 @@ func InitRedis() *redis.Client {
 		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
 	global.RedisDB = RedisClient
-	return RedisClient
 
 }
