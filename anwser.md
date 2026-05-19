@@ -918,3 +918,188 @@ AllowOriginFunc: func(origin string) bool {
 ```
 
 > `AllowOriginFunc` 和 `AllowOrigins` 不能同时用，二选一。
+
+---
+
+# go-redis Get 函数参数差异
+
+## 问题
+
+官方 Redis 文档示例中 `Get` 需要两个参数：`rdb.Get(ctx, "bike:1").Result()`，但我项目中只传了一个参数：`global.RedisDB.Get(cacheKey).Result()`，为什么？
+
+## 原因
+
+**版本不同。** 你的项目用的是 v6 老版本，官方文档展示的是 v7+ 新版本。
+
+| | v6（项目在用） | v7+（官方文档） |
+|---|---|---|
+| 包路径 | `github.com/go-redis/redis` | `github.com/redis/go-redis/v9` |
+| `Get` 签名 | `Get(key string) *StringCmd` | `Get(ctx context.Context, key string) *StringCmd` |
+| 参数个数 | **1个** | **2个** |
+| 其他方法 | `Set(key, val, ttl)` | `Set(ctx, key, val, ttl)` |
+
+你 go.mod 中的版本：
+```
+github.com/go-redis/redis v6.15.9+incompatible
+```
+
+## 为什么新版要加 context？
+
+Go 1.7 之后，`context` 成为网络库的标准实践，它可以：
+
+- **超时控制**：`ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)`，超过 2 秒自动取消 Redis 请求
+- **请求级联取消**：用户关闭浏览器 → Gin 的 `ctx.Request.Context()` 被取消 → 传播到 Redis 操作 → 不再浪费资源
+- **链路追踪**：在 context 中携带 trace ID，方便排查问题
+
+## 类比理解
+
+就像寄快递：
+- **v6**：直接扔给快递员，不管他送没送到（没有超时和取消机制）
+- **v9**：给快递员一个倒计时闹钟（超时）+ 一个对讲机（取消信号），超时或你反悔了可以立刻通知他
+
+## 需要升级吗？
+
+暂时**不需要**。v6 功能完全够用。如果以后要升级到 v9，需要注意：
+1. 包路径变了，import 要改
+2. 所有 Redis 方法都要加 `ctx context.Context` 作为第一个参数
+3. 初始化方式也有变化（`redis.NewClient` → `redis.NewClient(&redis.Options{...})`）
+
+---
+
+# 项目开发思路总结
+
+## 一、整体架构
+
+采用 Go 后端标准分层架构，关注点分离：
+
+```
+请求 → Router（路由 + CORS）
+        → Middleware（JWT 鉴权）
+          → Controller（处理业务）
+            → Model（数据结构）
+              → MySQL（持久化）/ Redis（缓存 + 计数）
+```
+
+**六层职责：**
+
+| 层 | 目录 | 职责 |
+|------|------|------|
+| 入口 | `main.go` | 启动、优雅退出 |
+| 路由 | `router/` | URL 映射、CORS、中间件挂载 |
+| 中间件 | `middlewares/` | JWT 鉴权、跨切面逻辑 |
+| 控制器 | `controllers/` | 请求处理、业务编排 |
+| 数据模型 | `models/` | 结构体定义、GORM 映射 |
+| 工具 | `utils/` | 密码哈希、JWT 生成/验证 |
+
+---
+
+## 二、开发思路
+
+### 1. 配置驱动启动
+
+`main.go` 只做三件事：加载配置 → 初始化路由 → 启动服务器。不写业务逻辑，保证入口文件简洁。
+
+```go
+config.InitConfig()       // 一切配置从这里开始
+r := router.SetupRouter() // 路由集中管理
+srv.ListenAndServe()      // 启动
+```
+
+### 2. 全局变量集中管理
+
+通过 `global` 包统一持有 MySQL 和 Redis 连接，避免在控制器之间传递依赖：
+
+```go
+global.Db      // 任何地方直接用
+global.RedisDB // 任何地方直接用
+```
+
+### 3. 配置与初始化合并
+
+`InitConfig()` 不仅读 YAML，还顺带调用 `InitDB()` 和 `InitRedis()`，一个调用完成全部初始化，减少 `main.go` 的复杂度。
+
+### 4. 路由分组区分权限
+
+```go
+api.GET("/exchangerate", ...)           // 公开接口
+api.Use(middlewares.AuthMiddleware())     // 从此往下全部需要 JWT
+{
+    api.POST("/exchangerate", ...)      // 需认证
+    api.POST("/articles", ...)          // 需认证
+}
+```
+
+通过 `Group` + `Use` 把公开和认证接口隔开，结构清晰，不会漏加认证。
+
+### 5. Write-Through 缓存失效
+
+创建文章时：写 MySQL → 立即删除 Redis 缓存。下次读取自动回填最新数据。保证**缓存和数据库最终一致**。
+
+### 6. 注册即登录
+
+注册接口完成后直接返回 JWT Token，减少用户操作步骤，前端拿 Token 后直接进入应用。
+
+---
+
+## 三、项目亮点
+
+### 1. 优雅关闭
+
+```go
+quit := make(chan os.Signal, 1)
+signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+<-quit
+// 5 秒超时优雅关闭
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+srv.Shutdown(ctx)
+```
+
+收到 `Ctrl+C` 或 `kill` 信号后不是暴力退出，而是等待现有请求处理完（最多等 5 秒），防止请求中断导致数据不一致。
+
+### 2. 双中间件链
+
+```
+CORS 中间件（全局）
+    → JWT 鉴权中间件（认证路由组）
+        → 业务处理器
+```
+
+全局 CORS + 按路由组 JWT，中间件挂载层次分明。
+
+### 3. 旁路缓存 + Cache Invalidation
+
+- 读：Redis → 未命中 → MySQL → 回填 Redis（TTL 10 分钟）
+- 写：MySQL → 删 Redis 缓存 → 下次读自动回填
+
+保证了数据最终一致性，同时大幅提升读性能。
+
+### 4. Redis 原子点赞
+
+使用 `INCR` 命令，天然支持并发安全——两个用户同时点赞不会导致计数错误。不需要分布式锁。
+
+### 5. Bcrypt 密码存储
+
+Cost 设为 12（2¹² = 4096 轮哈希），兼顾安全性与登录体验。密码永不落明文。
+
+### 6. JWT 无状态认证
+
+HS256 对称签名，24 小时过期。中间件统一解析 → 注入 `ctx.Set("username", ...)` → 后续处理器通过 `ctx.Get("username")` 获取当前用户，跨中间件传递上下文。
+
+### 7. CORS 配置明确
+
+`AllowCredentials: true` 支持前端携带 Token，`AllowOrigins` 精确限制 `localhost:5173`，不开放通配符 `*`，避免安全隐患。
+
+---
+
+## 四、技术栈一览
+
+| 组件 | 库 | 用途 |
+|------|------|------|
+| Web 框架 | `gin-gonic/gin` | HTTP 路由、中间件、JSON 响应 |
+| ORM | `gorm.io/gorm` | MySQL 数据访问 |
+| 配置 | `spf13/viper` | YAML 配置加载 |
+| 缓存 | `go-redis/redis` | Redis 缓存 + 点赞计数 |
+| 密码 | `golang.org/x/crypto` | Bcrypt 哈希 |
+| 认证 | `golang-jwt/jwt` | JWT 令牌生成/验证 |
+| 跨域 | `gin-contrib/cors` | 开发环境 CORS |
+| MySQL 驱动 | `gorm.io/driver/mysql` | GORM MySQL 驱动 |

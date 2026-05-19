@@ -86,12 +86,14 @@ func GetArticles(ctx *gin.Context) {
 			ctx.JSON(500, gin.H{
 				"error": err.Error(),
 			})
+			return
 		}
 		//删除缓存中的数据，确保下一次请求能够获取到最新的文章数据
 		if err := global.RedisDB.Del(cacheKey).Err(); err != nil {
 			ctx.JSON(500, gin.H{
 				"error": err.Error(),
 			})
+			return
 		}
 		ctx.JSON(http.StatusOK, articles)
 	}
