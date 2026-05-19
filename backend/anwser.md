@@ -966,6 +966,72 @@ Go 1.7 之后，`context` 成为网络库的标准实践，它可以：
 
 ---
 
+# `npm install pinia element-plus axios --save` 命令详解
+
+## 整体含义
+
+为 Vue 3 前端项目一次性安装三个核心依赖包，并记录到 `package.json` 的 `dependencies` 中。
+
+## 逐部分拆解
+
+### `npm install`
+- 从 npm 仓库下载并安装指定的包，存放进 `node_modules/` 目录。
+- 也可简写为 `npm i`。
+
+### `pinia`
+- **Vue 3 的官方状态管理库**（替代 Vue 2 时代的 Vuex）。
+- 用 `defineStore()` 定义 store，组件中直接用，支持 `ref`/`reactive` 写法。
+- 相比 Vuex 更轻量、TypeScript 支持更好、API 更简洁。
+- 常见用途：存储用户登录状态、购物车数据、全局设置等跨组件共享的数据。
+
+### `element-plus`
+- **Element UI 的 Vue 3 版本**，一套基于 Vue 3 的 PC 端组件库。
+- 提供开箱即用的组件：按钮、表单、表格、弹窗、导航菜单等。
+- 让你不用手写 UI 组件，直接用 `<el-button>`、`<el-table>` 等标签。
+- 适合后台管理系统类项目。
+
+### `axios`
+- **HTTP 请求库**，用于前端向后端（Go）发 API 请求。
+- 相比浏览器原生的 `fetch`，优点是：
+  - 自动 JSON 解析
+  - 请求/响应拦截器（统一加 token、统一处理错误）
+  - 请求取消、超时设置
+  - 更友好的错误处理
+- 前端通过它在 Vue 中调用后端的 `/api/...` 接口。
+
+### `--save`
+- 将包写入 `package.json` 的 `dependencies`（生产依赖）。
+- **npm v5+ 默认行为就是 `--save`**，不加也生效，显式写出来是为了清晰。
+- 对应 `--save-dev`（`-D`）写入 `devDependencies`，用于开发时工具包（如 Vite、TypeScript）。
+
+## 执行效果
+
+在 `package.json` 中新增三条记录：
+
+```json
+{
+  "dependencies": {
+    "pinia": "^2.x.x",
+    "element-plus": "^2.x.x",
+    "axios": "^2.x.x"
+  }
+}
+```
+
+## 为什么这三个一起装？
+
+这是 Vue 3 后台管理项目的**标配组合**：
+
+| 包 | 解决什么 | 类比 |
+|------|------|------|
+| **pinia** | 组件间共享数据（状态管理） | Go 中的 `global` 包 |
+| **element-plus** | 现成的 UI 组件（界面更快写出） | — |
+| **axios** | 前端调后端 API（网络请求） | Go 中的 `net/http` |
+
+三者配合分工明确：**element-plus** 画界面 → **pinia** 管数据 → **axios** 连后端，覆盖了前端三大核心需求（UI、状态、网络）。
+
+---
+
 # 项目开发思路总结
 
 ## 一、整体架构
