@@ -1,6 +1,6 @@
 # 汇率兑换应用 (Currency Exchange App)
 
-Go + Gin + GORM + MySQL + Redis 全栈实战项目
+Go + Gin + GORM + MySQL + Redis + Vue 3 全栈实战项目
 
 ## 技术栈
 
@@ -15,19 +15,24 @@ Go + Gin + GORM + MySQL + Redis 全栈实战项目
 - [gin-contrib/cors](https://github.com/gin-contrib/cors) — CORS 跨域中间件
 
 **前端：**
-- Vue 3 + Vite（开发服务器默认 `localhost:5173`）
+- Vue 3（Composition API + `<script setup>`）
+- TypeScript
+- [Vite](https://vite.dev/) — 构建工具 & 开发服务器（默认 `localhost:5173`）
+- [Pinia](https://pinia.vuejs.org/) — 状态管理
+- [Element Plus](https://element-plus.org/) — UI 组件库
+- [Axios](https://axios-http.com/) — HTTP 请求库
 
-**数据库：**
-- MySQL
-- Redis
+**数据库 & 缓存：**
+- MySQL — 持久化存储
+- Redis — 缓存 + 点赞计数
 
 ## 项目结构
 
 ```
 fullstack/
 ├── backend/
-│   ├── main.go                   # 入口文件
-│   ├── config/                   # 配置相关
+│   ├── main.go                   # 入口文件（优雅关闭）
+│   ├── config/                   # 配置
 │   │   ├── config.go             # 配置结构体 & Viper 加载
 │   │   ├── config.yml            # YAML 配置文件
 │   │   ├── db.go                 # MySQL 连接初始化
@@ -36,26 +41,45 @@ fullstack/
 │   │   └── router.go             # 路由注册 & CORS 配置
 │   ├── middlewares/              # 中间件
 │   │   └── auth_middleware.go    # JWT 认证中间件
-│   ├── controllers/              # 控制器（处理请求）
+│   ├── controllers/              # 控制器
 │   │   ├── auth_controller.go        # 用户认证（注册/登录）
 │   │   ├── auth_rate_controller.go   # 汇率数据接口
 │   │   ├── article_controller.go     # 文章 CRUD + 旁路缓存
-│   │   └── like_controller.go        # 点赞功能（Redis 计数）
+│   │   └── like_controller.go        # 点赞功能（Redis INCR）
 │   ├── models/                   # 数据模型
 │   │   ├── user.go               # 用户模型
 │   │   ├── exchange_rate.go      # 汇率模型
 │   │   └── article.go            # 文章模型
 │   ├── global/                   # 全局变量
-│   │   └── global.go             # MySQL & Redis 连接实例
+│   │   └── global.go             # DB & Redis 连接实例
 │   └── utils/                    # 工具函数
-│       └── utils.go              # 密码哈希、JWT 生成与验证
+│       └── utils.go              # Bcrypt 密码哈希、JWT 生成/验证
+├── frontend/
+│   ├── index.html                # HTML 入口
+│   ├── package.json              # 前端依赖
+│   ├── vite.config.ts            # Vite 配置
+│   ├── tsconfig.json             # TypeScript 配置
+│   └── src/
+│       ├── main.ts               # Vue 应用入口（挂载 Element Plus）
+│       ├── App.vue               # 根组件
+│       ├── style.css             # 全局样式
+│       ├── assets/               # 静态资源
+│       ├── components/           # 公共组件
+│       ├── views/                # 页面组件
+│       ├── stores/               # Pinia 状态管理
+│       └── api/                  # Axios 请求封装
+└── .gitignore
 ```
 
 ## 快速开始
 
 ### 1. 环境准备
 
-确保已安装并启动 MySQL 和 Redis。
+确保已安装并启动以下服务：
+- Go 1.26+
+- Node.js 18+
+- MySQL
+- Redis
 
 ### 2. 创建数据库
 
@@ -63,37 +87,58 @@ fullstack/
 CREATE DATABASE fullstack CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 3. 修改配置
+### 3. 配置
 
-编辑 `backend/config/config.yml`，根据你的环境修改数据库连接信息：
+编辑 `backend/config/config.yml`，修改数据库连接信息：
 
 ```yaml
 database:
   dsn: root:你的密码@tcp(localhost:3306)/fullstack?charset=utf8mb4&parseTime=True&loc=Local
 ```
 
-Redis 配置在 `backend/config/redis.go` 中，默认连接 `localhost:6379`，无需密码。
+Redis 默认连接 `localhost:6379`，无需密码（如需修改在 `backend/config/redis.go` 中调整）。
 
-### 4. 安装依赖
+Vite 代理配置（开发环境前端自动转发 `/api` 请求到后端）需在 `frontend/vite.config.ts` 添加：
+
+```ts
+export default defineConfig({
+  plugins: [vue()],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
+  },
+})
+```
+
+### 4. 启动后端
 
 ```bash
 cd backend
 go mod tidy
-```
-
-### 5. 运行
-
-```bash
 go run main.go
 ```
 
-服务默认运行在 `http://localhost:3000`
+服务运行在 `http://localhost:3000`
+
+### 5. 启动前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+浏览器自动打开 `http://localhost:5173`
 
 ### 6. 前后端联调
 
-后端已配置 CORS，允许前端 `http://localhost:5173` 跨域请求（含 Cookie/Token）。
+后端已配置 CORS 允许 `localhost:5173` 跨域请求（含 Cookie/Token）。开发环境建议配合 Vite proxy 使用，避免跨域问题。
 
-## API
+## API 文档
 
 ### 用户认证
 
@@ -117,7 +162,7 @@ go run main.go
 | GET  | /api/articles          | 查询全部   | 是   |
 | GET  | /api/articles/:id      | 查询单篇   | 是   |
 
-### 点赞功能（Redis 原子计数）
+### 点赞功能
 
 | 方法 | 路径                     | 说明       | 认证 |
 |------|-------------------------|------------|------|
@@ -126,10 +171,12 @@ go run main.go
 
 ## 架构说明
 
-- **缓存策略**：文章列表采用旁路缓存（Cache-Aside），先查 Redis → 未命中则查 MySQL → 回填 Redis（TTL 10 分钟）
-- **点赞计数**：使用 Redis `INCR` 原子操作，并发安全
+- **缓存策略**：文章列表采用旁路缓存（Cache-Aside），先查 Redis → 未命中则查 MySQL → 回填 Redis（TTL 10 分钟）；写操作时删除缓存，下次读取自动回填
+- **点赞计数**：使用 Redis `INCR` 原子操作，并发安全，无需分布式锁
 - **身份认证**：JWT（HS256），登录/注册后返回 token，后续请求放 `Authorization: Bearer <token>` 头
+- **密码安全**：Bcrypt 哈希存储（cost=12），永不存明文
 - **CORS**：开发环境允许 `localhost:5173` 跨域，生产环境交给 Nginx 处理
+- **优雅关闭**：收到 SIGINT/SIGTERM 信号后等待 5 秒让现有请求处理完毕再退出
 
 ## 请求示例
 
@@ -149,7 +196,7 @@ curl -X POST http://localhost:3000/api/auth/login \
   -d '{"username":"alice","password":"123456"}'
 ```
 
-### 新增汇率
+### 新增汇率（需认证）
 
 ```bash
 curl -X POST http://localhost:3000/api/exchangerate \
@@ -158,7 +205,7 @@ curl -X POST http://localhost:3000/api/exchangerate \
   -d '{"fromCurrency":"USD","toCurrency":"CNY","rate":7.25}'
 ```
 
-### 创建文章
+### 创建文章（需认证）
 
 ```bash
 curl -X POST http://localhost:3000/api/articles \
@@ -167,16 +214,42 @@ curl -X POST http://localhost:3000/api/articles \
   -d '{"title":"我的第一篇文章","content":"文章正文","preview":"文章摘要"}'
 ```
 
-### 点赞文章
+### 点赞文章（需认证）
 
 ```bash
 curl -X POST http://localhost:3000/api/articles/1/like \
   -H "Authorization: Bearer <token>"
 ```
 
-### 查询文章点赞数
+### 查询文章点赞数（需认证）
 
 ```bash
 curl -X GET http://localhost:3000/api/articles/1/like \
   -H "Authorization: Bearer <token>"
 ```
+
+## 当前进度
+
+### 后端（已完成）
+- [x] 项目骨架搭建（分层架构）
+- [x] MySQL + Redis 连接
+- [x] 用户注册/登录（JWT 认证）
+- [x] 汇率增查接口
+- [x] 文章 CRUD + 旁路缓存
+- [x] 文章点赞（Redis 原子计数）
+- [x] JWT 鉴权中间件
+- [x] 开发环境 CORS 配置
+- [x] 优雅关闭
+
+### 前端（待开发）
+- [x] Vite + Vue 3 + TypeScript 项目脚手架
+- [x] Element Plus、Pinia、Axios 已安装
+- [ ] Vite 代理配置
+- [ ] Axios 封装（baseURL、拦截器)
+- [ ] 登录/注册页面
+- [ ] 文章列表页面
+- [ ] 文章详情页面
+- [ ] 汇率展示页面
+- [ ] 点赞交互
+- [ ] Pinia 状态管理（用户 token、登录态）
+- [ ] 路由配置（Vue Router）
