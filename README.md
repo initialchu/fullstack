@@ -67,6 +67,8 @@ fullstack/
 │       ├── shims-vue.d.ts        # Vue 类型声明
 │       ├── router/
 │       │   └── index.ts          # 路由配置（5 个路由）
+│       ├── store/
+│       │   └── auth.ts           # Pinia 认证状态（token/登录/注册/退出）
 │       ├── views/                # 页面级组件
 │       │   ├── Home.vue          # 首页
 │       │   ├── CurrencyExchange.vue  # 货币兑换
@@ -239,13 +241,14 @@ curl -X GET http://localhost:3000/api/articles/1/like \
 - [x] Axios 封装（baseURL + JWT 请求拦截器）
 - [x] 顶部导航栏（Element Plus Menu + Vue Router）
 - [x] 首页（欢迎页）
-- [x] 登录页面
-- [x] 注册页面
+- [x] 登录页面（已接入 Pinia store，含 try/catch 错误处理）
+- [x] 注册页面（已接入 Pinia store，含 try/catch 错误处理）
 - [x] 文章列表页面（从后端获取、卡片展示）
 - [x] 货币兑换页面（下拉选择币种、输入金额、计算兑换结果）
 - [x] 路由配置（Vue Router，5 条路由）
+- [x] Pinia 状态管理（auth store：token、登录/注册/退出、isLoggedIn 计算属性）
+- [x] 退出登录功能（清除 token + 跳转首页）
+- [x] 导航栏根据登录状态显示/隐藏菜单项（v-if + isLoggedIn）
 - [ ] 文章详情页
 - [ ] 点赞交互（调用后端接口 + 前端更新）
-- [ ] Pinia 状态管理（用户 token、登录态）
-- [ ] 退出登录功能（导航栏已有按钮，逻辑未实现）
 - [ ] Vite 代理配置（目前通过后端 CORS 直连）
