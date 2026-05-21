@@ -70,7 +70,7 @@ const form = reactive({
 const onSubmit = () => {
   const rate = rates.value.find((rate)=>rate.fromCurrency===form.from && rate.toCurrency === form.to)
     if(rate){
-        result.value=Number(rate.rate*form.amount).toFixed(2)
+        result.value=Number((rate.rate*form.amount).toFixed(2))
     }else{
         result.value=0
     }
