@@ -4,11 +4,12 @@ import {defineStore} from 'pinia'
 import axios from '../axios'
 import {ref} from 'vue'
 import {useRouter} from 'vue-router'
+import {computed} from 'vue'
 
- const router = useRouter()
 export const useAuthStore = defineStore('auth',()=>{
     const token = ref<string|null>(localStorage.getItem('token'))
     // 登录方法
+     const router = useRouter()
     const login = async(username:string,password:string)=>{
         try{
             if(!username||!password){
@@ -49,7 +50,10 @@ export const useAuthStore = defineStore('auth',()=>{
            alert(msg)
         }
     }
-
+// 计算属性，判断用户是否已登录
+const isLoggedIn = computed(()=>{
+    return !!token.value
+})
 // 退出登录方法
 const logout = ()=>{
 
@@ -57,5 +61,5 @@ const logout = ()=>{
     localStorage.removeItem('token')// 从localStorage中移除token
 
 }
-return { token, login, register, logout }
+return { token, login, register, logout, isLoggedIn }
 })

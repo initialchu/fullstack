@@ -13,9 +13,9 @@
           <el-menu-item index="home">首页</el-menu-item>
           <el-menu-item index="currencyexchange">兑换货币</el-menu-item>
           <el-menu-item index="news">查看新闻</el-menu-item>
-          <el-menu-item index="login">登录</el-menu-item>
-          <el-menu-item index="register">注册</el-menu-item>
-          <el-menu-item index="logout">退出</el-menu-item>
+          <el-menu-item index="login" v-if="!authStore.isLoggedIn">登录</el-menu-item>
+          <el-menu-item index="register" v-if="!authStore.isLoggedIn">注册</el-menu-item>
+          <el-menu-item index="logout" v-if="authStore.isLoggedIn">退出</el-menu-item>
           
            
           
@@ -31,15 +31,22 @@
 <script setup lang="ts">
 import { ref ,watch} from 'vue'
 import {useRouter,useRoute} from 'vue-router'
+import {useAuthStore} from './store/auth'
 const router = useRouter()
 const route = useRoute()
-
+const authStore = useAuthStore()
 const activeIndex = ref('home')
 const handleSelect = (key: string) => {
+  if(key ==='logout'){
+    authStore.logout()
+    router.push({name:'home'})
+    return
+  }else{
   console.log(key)
   router.push({
     name:key
   })
+}
 }
 watch(route,(newRoute)=>{
   if(newRoute.name){
