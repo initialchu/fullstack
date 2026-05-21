@@ -25,20 +25,28 @@
 <script setup lang="ts">
 import {ref} from 'vue'
 
-import {useRouter} from 'vue-router'
+
 import {useAuthStore} from '../store/auth'
-const router = useRouter()
+
+
 const form = ref({
     username:'',
     password:''
 })
 
 const authStore = useAuthStore()
-const login = async()=>{
-   await authStore.login(form.value.username,form.value.password)
+
+    const login = async()=>{
+    try{   
+    await authStore.login(form.value.username,form.value.password)
    // 跳转到首页
+    }catch(error){
+        return
+    }
+
    
-   router.push({name:'home'})
+
+   
 
 }
 </script>

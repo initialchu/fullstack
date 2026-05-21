@@ -444,4 +444,109 @@ const onSubmit = () => {
 ## 总结一句话
 
 **前端 interface 的字段名必须和后端 JSON 的 key 完全一致，TypeScript 不会帮你做字段映射。** 另外要搞清楚后端返回的是单个对象还是数组，两者的处理方式完全不同。
+
+---
+
+# 登录失败如何不跳转页面（try/catch 错误处理）
+
+## 问题
+
+当前 `Login.vue` 的 `login` 函数中，`await axios.post(...)` 没有包在 `try/catch` 里。当后端返回 401（用户名或密码错误）时，axios 会抛出异常，控制台报错，用户看不到任何提示，体验很差。
+
+## 当前代码的问题
+
+```ts
+const login = async () => {
+    // ...
+    const res = await axios.post('/auth/login', { username, password })
+    // 如果上面抛异常，下面代码都不会执行
+    token.value = res.data.token
+    localStorage.setItem('token', token.value || '')
+    router.push({ name: 'home' })
+}
+```
+
+axios 请求失败（HTTP 状态码 ≥ 400）时，直接抛出异常，函数终止。但因为没有 `catch`，异常是**未捕获**的，浏览器只在控制台打印错误，用户看不到任何反馈。
+
+## 修正方案
+
+```ts
+const login = async () => {
+    const username = form.value.username
+    const password = form.value.password
+    if (!username || !password) {
+        alert('请输入用户名和密码')
+        return
+    }
+
+    try {
+        const res = await axios.post('/auth/login', { username, password })
+        // 只有请求成功（HTTP 2xx）才会执行到这里
+        token.value = res.data.token
+        localStorage.setItem('token', token.value || '')
+        router.push({ name: 'home' })
+    } catch (err: any) {
+        // 登录失败，不跳转，显示错误信息
+        const msg = err.response?.data?.error || '登录失败，请重试'
+        alert(msg)
+    }
+}
+```
+
+## 关键点解释
+
+| 代码 | 作用 |
+|------|------|
+| `try { ... }` | 包裹可能抛出异常的代码 |
+| `catch (err: any)` | 捕获异常，拿到错误对象 |
+| `err.response?.data?.error` | 从 axios 错误中取出后端返回的 error 字段（如"无效的用户名或密码"） |
+| `?.` 可选链 | 防止 `response`/`data` 为 `undefined` 时再报错，安全回退到默认提示 |
+| `alert(msg)` | 弹出错误提示，页面留在当前页，不跳转 |
+
+## 执行流程对比
+
+**没有 try/catch：**
+```
+请求失败 → 抛异常 → 函数中断 → 控制台报错 → 用户看到页面卡住
+```
+
+**有 try/catch：**
+```
+请求失败 → 抛异常 → catch 捕获 → alert 弹窗 → 用户看到错误信息，留在登录页
+请求成功 → 不抛异常 → 执行 try 内代码 → 存 token → 跳转首页
+```
+
+## 同样的改法也适用于注册
+
+`Register.vue` 的 `register` 函数结构完全一样，加上 `try/catch` 即可：
+
+```ts
+const register = async () => {
+    // 校验非空...
+    try {
+        const res = await axios.post('/auth/register', { username, password })
+        token.value = res.data.token
+        localStorage.setItem('token', token.value || '')
+        router.push({ name: 'home' })
+    } catch (err: any) {
+        const msg = err.response?.data?.error || '注册失败，请重试'
+        alert(msg)
+    }
+}
+```
+
+## 进阶：用 ElMessage 替代 alert
+
+Element Plus 提供了 `ElMessage`，比原生 `alert` 更好看：
+
+```ts
+import { ElMessage } from 'element-plus'
+
+// catch 中：
+ElMessage.error(msg)       // 错误提示（红色）
+// try 中成功后跳转前：
+ElMessage.success('登录成功')  // 成功提示（绿色）
+```
+
+`alert` 是浏览器原生弹窗，会阻塞页面；`ElMessage` 是页内通知，消失后自动关闭，体验更好。
  

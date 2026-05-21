@@ -25,9 +25,9 @@
 <script setup lang="ts">
 import {ref} from 'vue'
 import {useAuthStore} from '../store/auth'
-import {useRouter} from 'vue-router'
 
-const router = useRouter()
+
+
 const form = ref({
     username:'',
     password:''
@@ -37,7 +37,7 @@ const authStore = useAuthStore()
 const register = async()=>{
    await authStore.register(form.value.username,form.value.password)
    
-   router.push({name:'home'})
+
 
 }
 </script>
