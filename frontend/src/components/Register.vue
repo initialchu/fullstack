@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import {ref} from 'vue'
-import axios from '../axios'
+import {useAuthStore} from '../store/auth'
 import {useRouter} from 'vue-router'
 
 const router = useRouter()
@@ -32,22 +32,10 @@ const form = ref({
     username:'',
     password:''
 })
-const token = ref<string|null>(localStorage.getItem('token'))
 
+const authStore = useAuthStore()
 const register = async()=>{
-    const username = form.value.username
-    const password = form.value.password
-   if(!username||!password){
-    alert('请输入用户名和密码')
-    return
-   }
-   // 发送登录请求
-   const res=await axios.post('/auth/register',{username,password})
-   // 注册成功后，获取token
-   token.value = res.data.token
-   // 将token存储在localStorage中
-   localStorage.setItem('token',token.value||'')
-   // 跳转到首页
+   await authStore.register(form.value.username,form.value.password)
    
    router.push({name:'home'})
 
