@@ -60,14 +60,20 @@ fullstack/
 │   ├── vite.config.ts            # Vite 配置
 │   ├── tsconfig.json             # TypeScript 配置
 │   └── src/
-│       ├── main.ts               # Vue 应用入口（挂载 Element Plus）
-│       ├── App.vue               # 根组件
+│       ├── main.ts               # Vue 应用入口（挂载 Element Plus + Router）
+│       ├── App.vue               # 根组件（顶部导航 + router-view）
+│       ├── axios.ts              # Axios 实例（baseURL + JWT 拦截器）
 │       ├── style.css             # 全局样式
-│       ├── assets/               # 静态资源
-│       ├── components/           # 公共组件
-│       ├── views/                # 页面组件
-│       ├── stores/               # Pinia 状态管理
-│       └── api/                  # Axios 请求封装
+│       ├── shims-vue.d.ts        # Vue 类型声明
+│       ├── router/
+│       │   └── index.ts          # 路由配置（5 个路由）
+│       ├── views/                # 页面级组件
+│       │   ├── Home.vue          # 首页
+│       │   ├── CurrencyExchange.vue  # 货币兑换
+│       │   └── News.vue          # 文章列表
+│       └── components/           # 功能组件
+│           ├── Login.vue         # 登录表单
+│           └── Register.vue      # 注册表单
 └── .gitignore
 ```
 
@@ -98,21 +104,7 @@ database:
 
 Redis 默认连接 `localhost:6379`，无需密码（如需修改在 `backend/config/redis.go` 中调整）。
 
-Vite 代理配置（开发环境前端自动转发 `/api` 请求到后端）需在 `frontend/vite.config.ts` 添加：
-
-```ts
-export default defineConfig({
-  plugins: [vue()],
-  server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-    },
-  },
-})
-```
+> **关于 CORS 和代理**：后端已配置 CORS 允许 `localhost:5173` 跨域，前端可直接调用后端接口。如需通过 Vite 代理转发（生产更推荐），可在 `frontend/vite.config.ts` 中添加 `server.proxy` 配置。
 
 ### 4. 启动后端
 
@@ -241,15 +233,19 @@ curl -X GET http://localhost:3000/api/articles/1/like \
 - [x] 开发环境 CORS 配置
 - [x] 优雅关闭
 
-### 前端（待开发）
+### 前端（进行中）
 - [x] Vite + Vue 3 + TypeScript 项目脚手架
 - [x] Element Plus、Pinia、Axios 已安装
-- [ ] Vite 代理配置
-- [ ] Axios 封装（baseURL、拦截器)
-- [ ] 登录/注册页面
-- [ ] 文章列表页面
-- [ ] 文章详情页面
-- [ ] 汇率展示页面
-- [ ] 点赞交互
+- [x] Axios 封装（baseURL + JWT 请求拦截器）
+- [x] 顶部导航栏（Element Plus Menu + Vue Router）
+- [x] 首页（欢迎页）
+- [x] 登录页面
+- [x] 注册页面
+- [x] 文章列表页面（从后端获取、卡片展示）
+- [x] 货币兑换页面（下拉选择币种、输入金额、计算兑换结果）
+- [x] 路由配置（Vue Router，5 条路由）
+- [ ] 文章详情页
+- [ ] 点赞交互（调用后端接口 + 前端更新）
 - [ ] Pinia 状态管理（用户 token、登录态）
-- [ ] 路由配置（Vue Router）
+- [ ] 退出登录功能（导航栏已有按钮，逻辑未实现）
+- [ ] Vite 代理配置（目前通过后端 CORS 直连）
