@@ -3,10 +3,10 @@
         <el-main>
   <div v-if="articles&&articles.length">
     
-    <el-card class="article-card" v-for="article in articles" :key="article.ID">
+    <el-card @click="goDetail(article.ID, article.Title, article.Content)" class="article-card" v-for="article in articles" :key="article.ID">
         <h2>{{ article.Title }}</h2>
         <p>{{ article.Preview }}</p>
-        <el-button text>阅读更多</el-button>
+        <el-button text @click="goDetail(article.ID, article.Title, article.Content)">阅读更多</el-button>
     </el-card>
    
   </div>
@@ -18,6 +18,8 @@
 <script setup lang="ts">
 import axios from '../axios'
 import{ref, onMounted} from 'vue'
+import {useRouter} from 'vue-router'
+const router = useRouter()
 interface Article {
     ID:string;
     Title:string;
@@ -25,6 +27,9 @@ interface Article {
     Preview:string;
 }
 const articles = ref<Article[]>([])
+const goDetail = (id:string,title:string,content:string)=>{
+    router.push({name:'detail',query:{id,title,content}})
+}
 
 const fetchArticles = async ()=>{
     const res = await axios.get<Article[]>('/articles')
