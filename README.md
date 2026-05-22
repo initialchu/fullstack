@@ -66,13 +66,14 @@ fullstack/
 │       ├── style.css             # 全局样式
 │       ├── shims-vue.d.ts        # Vue 类型声明
 │       ├── router/
-│       │   └── index.ts          # 路由配置（5 个路由）
+│       │   └── index.ts          # 路由配置（6 个路由）
 │       ├── store/
 │       │   └── auth.ts           # Pinia 认证状态（token/登录/注册/退出）
 │       ├── views/                # 页面级组件
 │       │   ├── Home.vue          # 首页
 │       │   ├── CurrencyExchange.vue  # 货币兑换
-│       │   └── News.vue          # 文章列表
+│       │   ├── News.vue          # 文章列表
+│       │   └── Detail.vue        # 文章详情
 │       └── components/           # 功能组件
 │           ├── Login.vue         # 登录表单
 │           └── Register.vue      # 注册表单
@@ -153,7 +154,7 @@ npm run dev
 | 方法 | 路径                   | 说明       | 认证 |
 |------|-----------------------|------------|------|
 | POST | /api/articles          | 创建文章   | 是   |
-| GET  | /api/articles          | 查询全部   | 是   |
+| GET  | /api/articles          | 查询全部   | 否   |
 | GET  | /api/articles/:id      | 查询单篇   | 是   |
 
 ### 点赞功能
@@ -165,7 +166,7 @@ npm run dev
 
 ## 架构说明
 
-- **缓存策略**：文章列表采用旁路缓存（Cache-Aside），先查 Redis → 未命中则查 MySQL → 回填 Redis（TTL 10 分钟）；写操作时删除缓存，下次读取自动回填
+- **缓存策略**：文章列表采用旁路缓存（Cache-Aside），先查 Redis → 未命中则查 MySQL → 回填 Redis（TTL 10 分钟）；每次读取命中后删除缓存，确保下次请求获取最新数据
 - **点赞计数**：使用 Redis `INCR` 原子操作，并发安全，无需分布式锁
 - **身份认证**：JWT（HS256），登录/注册后返回 token，后续请求放 `Authorization: Bearer <token>` 头
 - **密码安全**：Bcrypt 哈希存储（cost=12），永不存明文
@@ -245,10 +246,10 @@ curl -X GET http://localhost:3000/api/articles/1/like \
 - [x] 注册页面（已接入 Pinia store，含 try/catch 错误处理）
 - [x] 文章列表页面（从后端获取、卡片展示）
 - [x] 货币兑换页面（下拉选择币种、输入金额、计算兑换结果）
-- [x] 路由配置（Vue Router，5 条路由）
+- [x] 路由配置（Vue Router，6 条路由）
 - [x] Pinia 状态管理（auth store：token、登录/注册/退出、isLoggedIn 计算属性）
 - [x] 退出登录功能（清除 token + 跳转首页）
 - [x] 导航栏根据登录状态显示/隐藏菜单项（v-if + isLoggedIn）
-- [ ] 文章详情页
+- [x] 文章详情页（通过 query 参数传递文章数据）
 - [ ] 点赞交互（调用后端接口 + 前端更新）
 - [ ] Vite 代理配置（目前通过后端 CORS 直连）
