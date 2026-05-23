@@ -22,7 +22,7 @@ func GenerateJWT(username string) (string, error) {
 	})
 	Token, err := token.SignedString([]byte("secret"))
 	//使用一个密钥字符串来签名生成的JWT令牌，这里使用了一个简单的字符串"secret"，在实际应用中应该使用更复杂和安全的密钥。
-	return "Bearer " + Token, err
+	return Token, err
 }
 
 // CheckPassword函数接受一个明文密码和一个哈希密码作为输入，使用bcrypt的CompareHashAndPassword函数比较两者是否匹配，如果匹配返回true，否则返回false。

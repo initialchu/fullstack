@@ -24,6 +24,8 @@ import {useRouter} from 'vue-router'
 const router = useRouter()
 const route = useRoute()
 
+
+
 </script>
 
 <style scoped>

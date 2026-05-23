@@ -251,5 +251,5 @@ curl -X GET http://localhost:3000/api/articles/1/like \
 - [x] 退出登录功能（清除 token + 跳转首页）
 - [x] 导航栏根据登录状态显示/隐藏菜单项（v-if + isLoggedIn）
 - [x] 文章详情页（通过 query 参数传递文章数据）
-- [ ] 点赞交互（调用后端接口 + 前端更新）
+- [x] 点赞交互（调用后端接口 + 前端实时更新点赞数）
 - [ ] Vite 代理配置（目前通过后端 CORS 直连）

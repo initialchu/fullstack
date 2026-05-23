@@ -549,4 +549,141 @@ ElMessage.success('登录成功')  // 成功提示（绿色）
 ```
 
 `alert` 是浏览器原生弹窗，会阻塞页面；`ElMessage` 是页内通知，消失后自动关闭，体验更好。
+
+---
+
+# 带 token 的请求该怎么写
+
+## 你的项目已经配置好了，不需要额外处理
+
+你的 [axios.ts](frontend/src/axios.ts) 里已经写了一个**请求拦截器**（第 7-15 行）：
+
+```ts
+instance.interceptors.request.use(config => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers = config.headers || {};
+        (config.headers as any).Authorization = 'Bearer ' + token;
+    }
+    return config;
+})
+```
+
+这个拦截器会在**每次请求发出前**自动执行：
+1. 从 `localStorage` 读取 token
+2. 如果 token 存在，自动加到请求头 `Authorization: Bearer <token>` 上
+
+所以你在 [News.vue:35](frontend/src/views/News.vue#L35) 写的代码：
+
+```ts
+const like = async (id: string) => {
+    await axios.post(`articles/${id}/like`)
+}
+```
+
+**这样写就已经带上 token 了**，不需要做任何额外操作。因为你 import 的是 `../axios`（你自己封装的实例），不是原生的 axios 库。
+
+## 注意：import 的是哪个 axios
+
+在你的项目里：
+
+```ts
+import axios from '../axios'   // ✅ 用的是你封装的实例，自动带 token
+import axios from 'axios'      // ❌ 用的是原生库，不会自动带 token
+```
+
+只要确保 import 路径是 `../axios`（指向你的 `axios.ts`），所有请求都会自动带上 token。
+
+## 你当前代码还需要的改进
+
+虽然 token 的发送没问题了，但 `like` 函数还有几点可以完善：
+
+### 1. 加上错误处理
+
+如果用户没登录就点了点赞，或者 token 过期了，后端会返回 401。目前你的代码没有 catch，出错时用户看不到任何反馈：
+
+```ts
+const like = async (id: string) => {
+    try {
+        await axios.post(`articles/${id}/like`)
+        // 点赞成功，可以更新 UI（比如按钮变色、点赞数+1 等）
+    } catch (err: any) {
+        const msg = err.response?.data?.error || '点赞失败'
+        alert(msg)
+    }
+}
+```
+
+### 2. 阻止事件冒泡
+
+你的点赞按钮在 `el-card` 里面，而 `el-card` 也有 `@click` 事件（跳转详情页）。点击点赞按钮时会**同时触发**卡片的点击事件，导致跳转。需要用 `@click.stop` 阻止冒泡：
+
+```html
+<el-button class="likes" @click.stop="like(article.ID)">点赞</el-button>
+```
+
+### 3. 拼写错误
+
+`calss="likes"` → 应该是 `class="likes"`。
+
+## 总结
+
+| 你关心的 | 现状 |
+|----------|------|
+| 请求带 token | ✅ 已自动处理，拦截器帮你加了 `Authorization` 头 |
+| 错误处理 | ❌ 没有 try/catch，请求失败时用户无感知 |
+| 事件冒泡 | ❌ 点赞会同时触发卡片点击，需加 `.stop` |
+
+---
+
+# 点赞请求报 401 的原因
+
+## 根本原因：token 被加了两次 "Bearer " 前缀
+
+全链路追踪如下：
+
+**第一步**：后端 `GenerateJWT` 返回时已经带了 "Bearer " 前缀（[utils.go:25](backend/utils/utils.go#L25)）：
+
+```go
+func GenerateJWT(username string) (string, error) {
+    // ...
+    return "Bearer " + Token, err  // ← 返回 "Bearer eyJhbGciOi..."
+}
+```
+
+**第二步**：前端把整个字符串（含 "Bearer "）存入 localStorage。
+
+**第三步**：前端拦截器又加一次 "Bearer "（[axios.ts:12](frontend/src/axios.ts#L12)）：
+
+```ts
+config.headers.Authorization = 'Bearer ' + token;
+// token 已经是 "Bearer eyJhbGciOi..."
+// 最终 → "Bearer Bearer eyJhbGciOi..."  ← 两个 Bearer！
+```
+
+**第四步**：后端 `ParseJWT` 只去掉一个 "Bearer "（[utils.go:39-41](backend/utils/utils.go#L39-L41)）：
+
+```go
+if len(tokenString) > 7 && tokenString[:7] == "Bearer " {
+    tokenString = tokenString[7:]  // 去掉一个，剩下 "Bearer eyJhbGci..."
+}
+// 剩下的 "Bearer eyJhbGci..." 不是合法 JWT → 解析失败 → 401
+```
+
+## 解决方案
+
+**改后端**（推荐，改一处即可）：`GenerateJWT` 不要加 "Bearer " 前缀，只返回纯 token：
+
+```go
+// backend/utils/utils.go 第 25 行，改为：
+return Token, err  // 原来写的是 "Bearer " + Token
+```
+
+这样整个链路就各司其职了：
+
+```
+后端返回纯 token → 前端存纯 token → 拦截器加上 "Bearer " → 后端解析时去掉 "Bearer " → 正确
+```
+
+前后端各自只处理一次 "Bearer "，不会重复。
  
