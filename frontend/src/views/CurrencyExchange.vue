@@ -105,4 +105,8 @@ const onSubmit = () => {
   position:relative;
   left:45%;
 }
+.result{
+    margin-top: 20px;
+    color: #409EFF;
+}
 </style>

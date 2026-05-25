@@ -39,6 +39,7 @@ func SetupRouter() *gin.Engine {
 	//不需要jwt认证的路由
 	api.GET("/exchangerate", controllers.GetExchangeRate)
 	api.GET("/articles", controllers.GetArticles)
+	api.GET("/articles/:id/like", controllers.GetLikes)
 	//需要jwt认证的路由
 	api.Use(middlewares.AuthMiddleware())
 	{
@@ -46,7 +47,7 @@ func SetupRouter() *gin.Engine {
 		api.POST("/articles", controllers.CreateArticle)
 
 		api.GET("/articles/:id", controllers.GetArticleByID)
-		api.GET("/articles/:id/like", controllers.GetLikes)
+
 		api.POST("/articles/:id/like", controllers.LikeArticle)
 	}
 	return r
