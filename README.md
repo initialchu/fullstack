@@ -1,6 +1,6 @@
-# 汇率兑换应用 (Currency Exchange App)
+# 全栈实战项目 (Fullstack App)
 
-Go + Gin + GORM + MySQL + Redis + Vue 3 全栈实战项目
+Go + Gin + GORM + MySQL + Redis + Vue 3 全栈实战项目，涵盖用户认证、汇率查询、文章管理和点赞功能。
 
 ## 技术栈
 
@@ -66,17 +66,19 @@ fullstack/
 │       ├── style.css             # 全局样式
 │       ├── shims-vue.d.ts        # Vue 类型声明
 │       ├── router/
-│       │   └── index.ts          # 路由配置（6 个路由）
+│       │   └── index.ts          # 路由配置（7 个路由）
 │       ├── store/
 │       │   └── auth.ts           # Pinia 认证状态（token/登录/注册/退出）
 │       ├── views/                # 页面级组件
-│       │   ├── Home.vue          # 首页
+│       │   ├── Home.vue          # 首页（欢迎页）
 │       │   ├── CurrencyExchange.vue  # 货币兑换
-│       │   ├── News.vue          # 文章列表
+│       │   ├── News.vue          # 文章列表（含点赞交互）
 │       │   └── Detail.vue        # 文章详情
-│       └── components/           # 功能组件
-│           ├── Login.vue         # 登录表单
-│           └── Register.vue      # 注册表单
+│       ├── components/           # 功能组件
+│       │   ├── Login.vue         # 登录表单
+│       │   └── Register.vue      # 注册表单
+│       └── assets/               # 静态资源
+│           └── like.png          # 点赞图标
 └── .gitignore
 ```
 
@@ -162,11 +164,11 @@ npm run dev
 | 方法 | 路径                     | 说明       | 认证 |
 |------|-------------------------|------------|------|
 | POST | /api/articles/:id/like   | 点赞文章   | 是   |
-| GET  | /api/articles/:id/like   | 查询点赞数 | 是   |
+| GET  | /api/articles/:id/like   | 查询点赞数 | 否   |
 
 ## 架构说明
 
-- **缓存策略**：文章列表采用旁路缓存（Cache-Aside），先查 Redis → 未命中则查 MySQL → 回填 Redis（TTL 10 分钟）；每次读取命中后删除缓存，确保下次请求获取最新数据
+- **缓存策略**：文章列表采用旁路缓存（Cache-Aside），先查 Redis → 未命中则查 MySQL → 回填 Redis（TTL 10 分钟）；缓存命中时删除缓存中的旧数据，确保下次请求获取最新内容
 - **点赞计数**：使用 Redis `INCR` 原子操作，并发安全，无需分布式锁
 - **身份认证**：JWT（HS256），登录/注册后返回 token，后续请求放 `Authorization: Bearer <token>` 头
 - **密码安全**：Bcrypt 哈希存储（cost=12），永不存明文
@@ -216,11 +218,10 @@ curl -X POST http://localhost:3000/api/articles/1/like \
   -H "Authorization: Bearer <token>"
 ```
 
-### 查询文章点赞数（需认证）
+### 查询文章点赞数
 
 ```bash
-curl -X GET http://localhost:3000/api/articles/1/like \
-  -H "Authorization: Bearer <token>"
+curl http://localhost:3000/api/articles/1/like
 ```
 
 ## 当前进度
@@ -236,17 +237,17 @@ curl -X GET http://localhost:3000/api/articles/1/like \
 - [x] 开发环境 CORS 配置
 - [x] 优雅关闭
 
-### 前端（进行中）
+### 前端（基本完成）
 - [x] Vite + Vue 3 + TypeScript 项目脚手架
 - [x] Element Plus、Pinia、Axios 已安装
 - [x] Axios 封装（baseURL + JWT 请求拦截器）
 - [x] 顶部导航栏（Element Plus Menu + Vue Router）
 - [x] 首页（欢迎页）
-- [x] 登录页面（已接入 Pinia store，含 try/catch 错误处理）
-- [x] 注册页面（已接入 Pinia store，含 try/catch 错误处理）
-- [x] 文章列表页面（从后端获取、卡片展示）
+- [x] 登录页面（已接入 Pinia store，含错误处理）
+- [x] 注册页面（已接入 Pinia store，含错误处理）
+- [x] 文章列表页面（从后端获取、卡片展示、点赞交互）
 - [x] 货币兑换页面（下拉选择币种、输入金额、计算兑换结果）
-- [x] 路由配置（Vue Router，6 条路由）
+- [x] 路由配置（Vue Router，7 条路由，含根路径重定向）
 - [x] Pinia 状态管理（auth store：token、登录/注册/退出、isLoggedIn 计算属性）
 - [x] 退出登录功能（清除 token + 跳转首页）
 - [x] 导航栏根据登录状态显示/隐藏菜单项（v-if + isLoggedIn）
