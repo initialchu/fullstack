@@ -3,10 +3,10 @@
         <el-main>
   <div v-if="articles&&articles.length">
     
-    <el-card @click="goDetail(article.ID, article.Title, article.Content)" class="article-card" v-for="article in articles" :key="article.ID">
+    <el-card @click="goDetail(article.ID)" class="article-card" v-for="article in articles" :key="article.ID">
         <h2>{{ article.Title }}</h2>
         <p>{{ article.Preview }}</p>
-        <el-button text @click="goDetail(article.ID, article.Title, article.Content)">阅读更多</el-button>
+        <el-button text @click="goDetail(article.ID)">阅读更多</el-button>
         <el-button class="likes" @click.stop="like(article.ID)"></el-button>
         <span>{{ likes.get(article.ID) }}</span>
     </el-card>
@@ -30,8 +30,8 @@ interface Article {
     Preview:string;
 }
 const articles = ref<Article[]>([])
-const goDetail = (id:string,title:string,content:string)=>{
-    router.push({name:'detail',query:{id,title,content}})
+const goDetail = (id:string)=>{
+    router.push({name:'detail',query:{id}})
 }
 // 点赞
 const like = async (id:string)=>{

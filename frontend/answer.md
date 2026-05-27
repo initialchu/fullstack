@@ -686,4 +686,335 @@ return Token, err  // 原来写的是 "Bearer " + Token
 ```
 
 前后端各自只处理一次 "Bearer "，不会重复。
- 
+
+---
+
+# News 到 Detail 页面的传参方式分析
+
+## 当前实现
+
+**News.vue 第 34 行**：
+```ts
+router.push({name:'detail', query:{id, title, content}})
+```
+
+**Detail.vue 第 8-9 行**：
+```html
+<h2>{{ route.query.title }}</h2>
+<article>{{ route.query.content }}</article>
+```
+
+## 结论：方式不正确，存在三个问题
+
+### 问题 1：URL 长度限制
+
+query 参数拼接在 URL 上，例如：
+
+```
+/detail?id=1&title=xxx&content=这是一篇很长很长的文章内容...
+```
+
+浏览器 URL 长度上限约 **2000 字符**（各浏览器略有差异）。文章 `Content` 稍微长一点就会超出限制，导致参数被截断或跳转失败。
+
+### 问题 2：安全问题
+
+文章内容完全暴露在 URL 中：
+- 用户浏览器历史记录会保存完整文章内容
+- 如果用户复制 URL 分享给别人，对方直接看到全部内容
+- 服务器访问日志也会记录完整 URL（含文章内容）
+
+### 问题 3：编码问题
+
+文章内容可能包含中文、空格、特殊符号（`&`、`=`、`#` 等），这些字符在 URL 中需要编码。Vue Router 会自动处理编码，但如果文章特别长，编码后的 URL 会更长，更容易触及长度上限。
+
+## 正确做法：只传 id，Detail 页自己请求数据
+
+### 为什么只传 id 就够了？
+
+你的后端已经有现成的接口：`GET /api/articles/:id`（[router.go:49](backend/router/router.go#L49)），对应 `GetArticleByID` 控制器。所以 Detail 页面完全可以**只拿到 id，然后自己发请求获取文章数据**。
+
+### 修改 News.vue
+
+```ts
+// 只传 id，不要传 title 和 content
+const goDetail = (id: string) => {
+    router.push({ name: 'detail', query: { id } })
+}
+```
+
+模板里的点击事件也相应简化：
+
+```html
+<el-card @click="goDetail(article.ID)" class="article-card" v-for="article in articles" :key="article.ID">
+```
+
+### 修改 Detail.vue
+
+在 `onMounted` 里用 `route.query.id` 发请求获取文章数据：
+
+```html
+<template>
+    <el-container>
+        <el-main>
+            <div v-if="article">
+                <el-card class="article-card">
+                    <h2>{{ article.Title }}</h2>
+                    <article>{{ article.Content }}</article>
+                    <el-button @click="router.back()">返回</el-button>
+                    <footer>&copy; 2026 My App</footer>
+                </el-card>
+            </div>
+            <div v-else-if="loading">加载中...</div>
+            <div v-else>文章不存在</div>
+        </el-main>
+    </el-container>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import axios from '../axios'
+
+const router = useRouter()
+const route = useRoute()
+
+interface Article {
+    ID: string
+    Title: string
+    Content: string
+}
+
+const article = ref<Article | null>(null)
+const loading = ref(true)
+
+onMounted(async () => {
+    try {
+        const id = route.query.id as string
+        const res = await axios.get<Article>(`/articles/${id}`)
+        article.value = res.data
+    } catch (err: any) {
+        console.error('获取文章失败', err)
+    } finally {
+        loading.value = false
+    }
+})
+</script>
+```
+
+### 改后的流程对比
+
+| | 当前做法 | 正确做法 |
+|---|---|---|
+| URL | `/detail?id=1&title=xxx&content=很长很长的内容...` | `/detail?id=1` |
+| URL 长度 | 随文章内容增长，可能超限 | 固定很短 |
+| 安全性 | 文章内容暴露在 URL | URL 中只有 id |
+| 数据来源 | 从 URL 读取（不可靠） | 从后端 API 获取（可靠） |
+| SEO/分享 | 无意义 | URL 干净，可分享 |
+
+## 补充建议
+
+如果想更规范，还可以用**路由 params**代替 query：
+
+```ts
+// router/index.ts 中把路由改成
+{
+    path: '/detail/:id',
+    name: 'detail',
+    component: () => import('../views/Detail.vue')
+}
+
+// News.vue 跳转
+router.push({ name: 'detail', params: { id } })
+
+// Detail.vue 读取
+const id = route.params.id as string
+```
+
+用 params 的 URL 是 `/detail/1`，比 `/detail?id=1` 更简洁、更 RESTful。但这只是风格偏好，query 和 params 都可以，核心关键是**不要把文章内容放进 URL**。
+
+---
+
+# `article.value = res.data` 是直接赋值吗？有隐患吗？
+
+## 是的，这就是一个普通的对象引用赋值
+
+```ts
+article.value = res.data
+```
+
+这行代码做的事情：把 `res.data` 这个对象的**引用**赋给 `article.value`。之后 `article.value` 和 `res.data` 指向**堆内存中的同一个对象**。
+
+JavaScript 的赋值永远是"传引用"（对象类型），没有隐式的深拷贝。
+
+## 这样做有问题吗？
+
+**在这个场景下没有问题。** 而且是 Vue 3 里最标准的做法。
+
+原因：
+
+1. **axios 每次请求返回的是新对象**：`res.data` 是 axios 从 HTTP 响应体反序列化出来的全新对象，不是复用的缓存。所以不存在"多个地方持有同一个引用导致互相干扰"的问题。
+
+2. **Vue 3 的 ref 会把赋值的对象自动变成响应式**：当你执行 `article.value = res.data`，Vue 内部的 Proxy 会拦截这个赋值，把 `res.data` 包装成响应式对象。之后模板里 `article.Title` 的展示、修改都会自动追踪。
+
+3. **TypeScript 只做编译时检查**：`axios.get<Article>` 告诉 TypeScript "我期望 `res.data` 的形状是 `Article`"，编译器帮你做类型校验。但运行时真实的 `res.data` 可能带着后端返回的全部字段（比如后端多返回了 `Preview`、`CreatedAt` 等），这些字段也一样会出现在 `article.value` 上，不影响功能。
+
+## 什么时候才需要关心这个问题？
+
+| 场景 | 直接赋值 OK？ | 说明 |
+|------|:---:|---|
+| 从 API 获取新数据后替换展示 | ✅ | 标准做法 |
+| 想把一个对象的修改"隔离"（编辑表单草稿） | ❌ | 需要拷贝，否则改草稿会直接改原对象 |
+| 多个组件共享同一个状态对象 | ⚠️ | 应该用 store（Pinia），而不是通过 ref 互相传递引用 |
+
+### 什么时候需要拷贝？
+
+如果你在 Detail 页有一个"编辑"功能，用户修改表单时你不想直接改 `article` 对象（防止用户点了取消后数据已经变了），那时候才需要：
+
+```ts
+// 需要深拷贝的场景：编辑草稿
+const draft = ref<Article>(JSON.parse(JSON.stringify(article.value)))
+// 或者更规范的：
+const draft = ref<Article>({ ...article.value })  // 浅拷贝够用的话
+```
+
+但对于你的 Detail 页——**只展示，不修改**——`article.value = res.data` 完全没问题。这是一次新的 HTTP 响应，一个全新的对象，直接赋值是最简洁正确的写法。
+
+---
+
+# 如果后端字段名和前端 interface 变量名不同怎么办？
+
+## 核心认知：TypeScript interface 不做字段映射
+
+```ts
+// 假设后端返回的 JSON：
+{ "user_name": "张三", "user_age": 25 }
+
+// 你定义的前端 interface：
+interface User {
+    name: string    // ❌ 和后端的 user_name 对不上
+    age: number     // ❌ 和后端的 user_age 对不上
+}
+
+// 执行赋值
+user.value = res.data  // res.data 是 { user_name: "张三", user_age: 25 }
+```
+
+赋值之后，`user.value` 这个对象的 **key 仍然是后端的 `user_name` 和 `user_age`**，不会魔法般地变成 `name` 和 `age`。
+
+此时你在模板里写：
+
+```html
+<p>{{ user.name }}</p>   <!-- 显示空白！因为对象上没有 name 这个 key -->
+<p>{{ user.user_name }}</p>  <!-- 能显示"张三"，但你的 interface 没定义这个字段 -->
+```
+
+## 一句话总结
+
+`axios.get<User>(...)` 的泛型 `<User>` 只是告诉 TypeScript "你帮我检查代码里有没有访问不存在的字段"。但**真正决定对象上有什么 key 的，是后端返回的 JSON**。
+
+## 三种情况的处理方式
+
+### 情况 1：字段名完全一致（你的项目当前就是）
+
+后端返回 `{ ID, Title, Content }`，前端 interface 也写 `{ ID, Title, Content }`，模板用 `article.Title`。
+
+✅ 完全没问题，直接赋值即可，TypeScript 检查 + 运行时取值都正确。
+
+### 情况 2：字段名不同，你想在前端换名字
+
+后端返回 `{ user_name, user_age }`，你想在前端用 `name` 和 `age`。
+
+这时候**必须手动映射**，不能直接赋值：
+
+```ts
+const res = await axios.get('/user/1')
+// res.data = { user_name: "张三", user_age: 25 }
+
+// 手动映射
+user.value = {
+    name: res.data.user_name,
+    age: res.data.user_age
+}
+```
+
+TypeScript 不会帮你做这件事，JSON 解析也不会。
+
+### 情况 3：用 GORM 的 JSON 标签控制后端字段名
+
+你可以在 Go 的 model 里加 `json` 标签，让后端输出的字段名直接匹配前端：
+
+```go
+type Article struct {
+    ID      uint   `json:"id"`
+    Title   string `json:"title"`
+    Content string `json:"content"`
+}
+```
+
+这样后端返回的就是 `{ "id": 1, "title": "xxx", "content": "yyy" }`，前端 interface 全部用小写即可。
+
+## 你项目的建议
+
+你后端 Article model 大概率没有写 `json` 标签，所以 GORM 默认用字段名（大写开头：`ID`、`Title`、`Content`）。前端 interface 用同样的名字就能对上，所以当前没有问题。
+
+但更推荐的 Go 风格是：**后端 model 都加上 `json` 标签统一用小写驼峰**，前端 interface 也用小写开头。这样前后端风格一致，以后不会乱。
+
+---
+
+# 后端返回了 Preview 等额外字段，但 interface 里没写
+
+## 实际返回 vs 你定义的 interface
+
+后端 `Article` 模型（[article.go:5-11](backend/models/article.go#L5-L11)）嵌入了 `gorm.Model`，所以 `GetArticleByID` 接口实际返回的 JSON 是：
+
+```json
+{
+    "ID": 1,
+    "CreatedAt": "2026-05-27T...",
+    "UpdatedAt": "2026-05-27T...",
+    "DeletedAt": null,
+    "Title": "文章标题",
+    "Content": "文章内容...",
+    "Preview": "文章摘要...",
+    "Likes": 5
+}
+```
+
+共 8 个字段。但你定义的 interface 只有 3 个：
+
+```ts
+interface Article {
+    ID: string
+    Title: string
+    Content: string
+}
+```
+
+## 这样做有问题吗？
+
+**没有运行时问题。** `article.value = res.data` 之后，`article.value` 上的实际字段是后端返回的 8 个，不是 interface 定义的 3 个。模板只用到了 `article.Title` 和 `article.Content`，其余 6 个字段存在但没被访问，毫无影响。
+
+TypeScript 的 interface 在这里扮演的是"我只需要这些"的角色，不是"只允许有这些"。这叫做 TypeScript 的**结构化类型**（structural typing）——只要对象包含 interface 要求的字段，多出来的字段不会报错。
+
+## 要不要把 interface 补全？
+
+**不是必须的，但建议加上你实际要用的字段：**
+
+```ts
+interface Article {
+    ID: number        // ← 建议改成 number，后端返回的是数字
+    Title: string
+    Content: string
+    Preview: string   // ← 加上，后续可能会用到
+    // CreatedAt、UpdatedAt、DeletedAt、Likes 用不到就不加
+}
+```
+
+不补也完全能跑，补了的好处是：
+- 以后在代码里访问 `article.Preview` 或 `article.Likes` 时 TypeScript 不会报错
+- 让读代码的人一眼就知道这个对象上有哪些字段
+
+## 关键点
+
+`axios.get<Article>` 中的 `<Article>` 泛型只影响 `res.data` 的**类型推断**，不影响运行时对象上的实际字段。你写 `<Article>` 或 `<any>`，`res.data` 上都是后端返回的那 8 个字段，一个不会多一个不会少。
+

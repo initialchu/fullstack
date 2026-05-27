@@ -5,8 +5,8 @@
   <div >
    
     <el-card class="article-card">
-       <h2>{{route.query.title  }}</h2>
-        <article>{{route.query.content}}</article>
+       <h2>{{article.Title}}</h2>
+        <article>{{article.Content}}</article>
         <el-button @click="router.back()">返回</el-button>
          <footer >&copy; 2026 My  App</footer>
     </el-card>
@@ -21,10 +21,31 @@
 <script setup lang="ts">
 import {useRoute} from 'vue-router'
 import {useRouter} from 'vue-router'
+import {ref} from 'vue'
+import axios from '../axios'
+import {onMounted} from 'vue'
 const router = useRouter()
 const route = useRoute()
+const article = ref({
+    ID:'',
+    Title:'',
+    Content:'',
+    
+})
+const getDetail = async ()=>{
+    try{
+        const res = await axios.get(`/articles/${route.query.id}`)
+        article.value = res.data
+        console.log('article',res.data)
 
-
+    }catch(err:any){
+        const msg=err.response?.data?.err
+        alert(msg||'获取文章详情失败')
+    }
+}
+onMounted(()=>{
+    getDetail()
+})
 
 </script>
 
